@@ -1222,6 +1222,7 @@ p {
   font-size: 1.8rem;
   letter-spacing: 3px;
   background: linear-gradient(90deg, #ffffff, var(--secondary));
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin: 0;

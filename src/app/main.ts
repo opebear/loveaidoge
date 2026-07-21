@@ -28,7 +28,7 @@ export function initApp() {
     // Normalize path and href by stripping leading dot-slash or slash and index.html
     const normalize = (path) => {
       if (!path) return "";
-      let p = path.replace(/^\.?\//, "");
+      const p = path.replace(/^\.?\//, "");
       if (p === "" || p === "/" || p === "index.html") {
         return "index.html";
       }
@@ -229,7 +229,7 @@ function initFluidCursor() {
   canvas.id = "fluid";
   document.body.appendChild(canvas);
 
-  let config = {
+  const config = {
     SIM_RESOLUTION: 128,
     DYE_RESOLUTION: 1440,
     CAPTURE_RESOLUTION: 512,
@@ -383,7 +383,7 @@ function initFluidCursor() {
       for (let i = 0; i < keywords.length; i++) hash += hashCode(keywords[i]);
       let program = this.programs[hash];
       if (program == null) {
-        let fragmentShader = compileShader(
+        const fragmentShader = compileShader(
           gl.FRAGMENT_SHADER,
           this.fragmentShaderSource,
           keywords,
@@ -412,7 +412,7 @@ function initFluidCursor() {
   }
 
   function createProgram(vertexShader, fragmentShader) {
-    let program = gl.createProgram();
+    const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
@@ -423,10 +423,10 @@ function initFluidCursor() {
   }
 
   function getUniforms(program) {
-    let uniforms = [];
-    let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+    const uniforms = [];
+    const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
     for (let i = 0; i < uniformCount; i++) {
-      let uniformName = gl.getActiveUniform(program, i).name;
+      const uniformName = gl.getActiveUniform(program, i).name;
       uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
     }
     return uniforms;
@@ -775,8 +775,8 @@ function initFluidCursor() {
   const displayMaterial = new Material(baseVertexShader, displayShaderSource);
 
   function initFramebuffers() {
-    let simRes = getResolution(config.SIM_RESOLUTION);
-    let dyeRes = getResolution(config.DYE_RESOLUTION);
+    const simRes = getResolution(config.SIM_RESOLUTION);
+    const dyeRes = getResolution(config.DYE_RESOLUTION);
     const texType = ext.halfFloatTexType;
     const rgba = ext.formatRGBA;
     const rg = ext.formatRG;
@@ -855,7 +855,7 @@ function initFluidCursor() {
 
   function createFBO(w, h, internalFormat, format, type, param) {
     gl.activeTexture(gl.TEXTURE0);
-    let texture = gl.createTexture();
+    const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, param);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, param);
@@ -873,7 +873,7 @@ function initFluidCursor() {
       null,
     );
 
-    let fbo = gl.createFramebuffer();
+    const fbo = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER,
@@ -885,8 +885,8 @@ function initFluidCursor() {
     gl.viewport(0, 0, w, h);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    let texelSizeX = 1.0 / w;
-    let texelSizeY = 1.0 / h;
+    const texelSizeX = 1.0 / w;
+    const texelSizeY = 1.0 / h;
     return {
       texture,
       fbo,
@@ -923,7 +923,7 @@ function initFluidCursor() {
         fbo2 = value;
       },
       swap() {
-        let temp = fbo1;
+        const temp = fbo1;
         fbo1 = fbo2;
         fbo2 = temp;
       },
@@ -931,7 +931,7 @@ function initFluidCursor() {
   }
 
   function resizeFBO(target, w, h, internalFormat, format, type, param) {
-    let newFBO = createFBO(w, h, internalFormat, format, type, param);
+    const newFBO = createFBO(w, h, internalFormat, format, type, param);
     copyProgram.bind();
     gl.uniform1i(copyProgram.uniforms.uTexture, target.attach(0));
     blit(newFBO);
@@ -958,7 +958,7 @@ function initFluidCursor() {
   }
 
   function updateKeywords() {
-    let displayKeywords = [];
+    const displayKeywords = [];
     if (config.SHADING) displayKeywords.push("SHADING");
     displayMaterial.setKeywords(displayKeywords);
   }
@@ -981,7 +981,7 @@ function initFluidCursor() {
   }
 
   function calcDeltaTime() {
-    let now = Date.now();
+    const now = Date.now();
     let dt = (now - lastUpdateTime) / 1000;
     dt = Math.min(dt, 0.016666);
     lastUpdateTime = now;
@@ -989,8 +989,8 @@ function initFluidCursor() {
   }
 
   function resizeCanvas() {
-    let width = scaleByPixelRatio(canvas.clientWidth);
-    let height = scaleByPixelRatio(canvas.clientHeight);
+    const width = scaleByPixelRatio(canvas.clientWidth);
+    const height = scaleByPixelRatio(canvas.clientHeight);
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
@@ -1100,7 +1100,7 @@ function initFluidCursor() {
         velocity.texelSizeY,
       );
     }
-    let velocityId = velocity.read.attach(0);
+    const velocityId = velocity.read.attach(0);
     gl.uniform1i(advectionProgram.uniforms.uVelocity, velocityId);
     gl.uniform1i(advectionProgram.uniforms.uSource, velocityId);
     gl.uniform1f(advectionProgram.uniforms.dt, dt);
@@ -1135,8 +1135,8 @@ function initFluidCursor() {
   }
 
   function drawDisplay(target) {
-    let width = target == null ? gl.drawingBufferWidth : target.width;
-    let height = target == null ? gl.drawingBufferHeight : target.height;
+    const width = target == null ? gl.drawingBufferWidth : target.width;
+    const height = target == null ? gl.drawingBufferHeight : target.height;
     displayMaterial.bind();
     if (config.SHADING) {
       gl.uniform2f(
@@ -1150,8 +1150,8 @@ function initFluidCursor() {
   }
 
   function splatPointer(pointer) {
-    let dx = pointer.deltaX * config.SPLAT_FORCE;
-    let dy = pointer.deltaY * config.SPLAT_FORCE;
+    const dx = pointer.deltaX * config.SPLAT_FORCE;
+    const dy = pointer.deltaY * config.SPLAT_FORCE;
     splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
   }
 
@@ -1160,8 +1160,8 @@ function initFluidCursor() {
     color.r *= 10.0;
     color.g *= 10.0;
     color.b *= 10.0;
-    let dx = 10 * (Math.random() - 0.5);
-    let dy = 30 * (Math.random() - 0.5);
+    const dx = 10 * (Math.random() - 0.5);
+    const dy = 30 * (Math.random() - 0.5);
     splat(pointer.texcoordX, pointer.texcoordY, dx, dy, color);
   }
 
@@ -1188,7 +1188,7 @@ function initFluidCursor() {
   }
 
   function correctRadius(radius) {
-    let aspectRatio = canvas.width / canvas.height;
+    const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio > 1) radius *= aspectRatio;
     return radius;
   }
@@ -1202,29 +1202,29 @@ function initFluidCursor() {
   }
 
   window.addEventListener("mousedown", (e) => {
-    let pointer = pointers[0];
-    let posX = scaleByPixelRatio(e.clientX);
-    let posY = scaleByPixelRatio(e.clientY);
+    const pointer = pointers[0];
+    const posX = scaleByPixelRatio(e.clientX);
+    const posY = scaleByPixelRatio(e.clientY);
     updatePointerDownData(pointer, -1, posX, posY);
     clickSplat(pointer);
     startLoopIfNeeded();
   });
 
   window.addEventListener("mousemove", (e) => {
-    let pointer = pointers[0];
-    let posX = scaleByPixelRatio(e.clientX);
-    let posY = scaleByPixelRatio(e.clientY);
-    let color = pointer.color;
+    const pointer = pointers[0];
+    const posX = scaleByPixelRatio(e.clientX);
+    const posY = scaleByPixelRatio(e.clientY);
+    const color = pointer.color;
     updatePointerMoveData(pointer, posX, posY, color);
     startLoopIfNeeded();
   });
 
   window.addEventListener("touchstart", (e) => {
     const touches = e.targetTouches;
-    let pointer = pointers[0];
+    const pointer = pointers[0];
     for (let i = 0; i < touches.length; i++) {
-      let posX = scaleByPixelRatio(touches[i].clientX);
-      let posY = scaleByPixelRatio(touches[i].clientY);
+      const posX = scaleByPixelRatio(touches[i].clientX);
+      const posY = scaleByPixelRatio(touches[i].clientY);
       updatePointerDownData(pointer, touches[i].identifier, posX, posY);
     }
     startLoopIfNeeded();
@@ -1234,10 +1234,10 @@ function initFluidCursor() {
     "touchmove",
     (e) => {
       const touches = e.targetTouches;
-      let pointer = pointers[0];
+      const pointer = pointers[0];
       for (let i = 0; i < touches.length; i++) {
-        let posX = scaleByPixelRatio(touches[i].clientX);
-        let posY = scaleByPixelRatio(touches[i].clientY);
+        const posX = scaleByPixelRatio(touches[i].clientX);
+        const posY = scaleByPixelRatio(touches[i].clientY);
         updatePointerMoveData(pointer, posX, posY, pointer.color);
       }
       startLoopIfNeeded();
@@ -1246,7 +1246,7 @@ function initFluidCursor() {
   );
 
   window.addEventListener("touchend", (e) => {
-    let pointer = pointers[0];
+    const pointer = pointers[0];
     updatePointerUpData(pointer);
   });
 
@@ -1280,19 +1280,19 @@ function initFluidCursor() {
   }
 
   function correctDeltaX(delta) {
-    let aspectRatio = canvas.width / canvas.height;
+    const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio < 1) delta *= aspectRatio;
     return delta;
   }
 
   function correctDeltaY(delta) {
-    let aspectRatio = canvas.width / canvas.height;
+    const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio > 1) delta /= aspectRatio;
     return delta;
   }
 
   function generateColor() {
-    let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+    const c = HSVtoRGB(Math.random(), 1.0, 1.0);
     // Bright neon-glowing color (perfectly visible over the dark layout)
     c.r *= 0.1;
     c.g *= 0.1;
@@ -1706,7 +1706,7 @@ function initMemorialBoard() {
   const canvas = document.getElementById("burner-ashes");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  let ashes = [];
+  const ashes = [];
 
   function resizeCanvas() {
     canvas.width = canvas.parentElement.clientWidth;
@@ -2869,7 +2869,7 @@ function initCosmicStardust() {
     container.insertBefore(canvas, container.firstChild);
 
     const ctx = canvas.getContext("2d");
-    let stars = [];
+    const stars = [];
 
     const resize = () => {
       canvas.width = container.clientWidth;
@@ -3112,8 +3112,8 @@ function initQuantumCursor() {
 
   let mouseX = 0;
   let mouseY = 0;
-  let cursorX = 0;
-  let cursorY = 0;
+  const cursorX = 0;
+  const cursorY = 0;
   let isMoving = false;
   let moveTimeout = null;
 
@@ -3356,7 +3356,7 @@ function initLuminousAnalytics() {
     ctx.setLineDash([]); // Reset line dashes
 
     // Calculate dynamic auto-scaling Y boundaries to let the line fill the viewport beautifully
-    let minVal = Math.min(...chartHistoryPoints);
+    const minVal = Math.min(...chartHistoryPoints);
     let maxVal = Math.max(...chartHistoryPoints);
     if (buyPressure > 0) {
       maxVal = Math.max(maxVal, respectsNum + buyPressure);
@@ -3372,7 +3372,7 @@ function initLuminousAnalytics() {
 
     // Compute coordinate points
     const points = chartHistoryPoints.map((val, idx) => {
-      let x = marginX + idx * spacingX;
+      const x = marginX + idx * spacingX;
 
       let valWithPressure = val;
       // Add buy pressure curve to the tail end of the trendline
