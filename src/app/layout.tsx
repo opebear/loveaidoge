@@ -1,5 +1,7 @@
 import "./globals.css";
 import React from "react";
+import Link from "next/link";
+import Image from "next/image";
 
 export const metadata = {
   title: "AIDogeCTO.com",
@@ -80,9 +82,11 @@ export default function RootLayout({
           />
           <div className="loader-content font-mono">
             <div className="loader-logo-container">
-              <img
+              <Image
                 src="/img/AIDOGE_Logo.png"
                 alt="AIDOGE"
+                width={80}
+                height={80}
                 className="loader-logo-spin"
               />
             </div>
@@ -102,12 +106,14 @@ export default function RootLayout({
 
         <nav className="navbar" id="navbar">
           <div className="navbar-container">
-            <a href="/" className="navbar-logo">
-              <img
+            <Link href="/" className="navbar-logo">
+              <Image
                 src="/img/AIDOGE_Wordmark_Horizontal.png"
                 alt="AIDOGE Wordmark"
+                width={200}
+                height={50}
               />
-            </a>
+            </Link>
             {/* Dynamic Synth Wave Player */}
             <div
               className="navbar-synth-player font-mono"
@@ -130,12 +136,12 @@ export default function RootLayout({
               </div>
             </div>
             <div className="navbar-links">
-              <a href="/" className="nav-link">
+              <Link href="/" className="nav-link">
                 Home
-              </a>
-              <a href="/community" className="nav-link">
+              </Link>
+              <Link href="/community" className="nav-link">
                 Community
-              </a>
+              </Link>
             </div>
           </div>
         </nav>

@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 
 export default function NotFound() {
   return (
@@ -30,7 +31,7 @@ export default function NotFound() {
           The requested memory coordinates could not be retrieved. The sector
           might have been permanently deflated.
         </p>
-        <a
+        <Link
           href="/"
           style={{
             display: "inline-block",
@@ -44,7 +45,7 @@ export default function NotFound() {
           }}
         >
           RETURN TO HOME
-        </a>
+        </Link>
       </div>
     </div>
   );

@@ -97,7 +97,7 @@ export function initApp() {
   }
 
   function spawnParticles(x: number, y: number) {
-    const count = 10 + Math.floor(Math.random() * 8); // 10 to 18 particles
+    const count = 5 + Math.floor(Math.random() * 6); // 5 to 10 particles
     const isFirstActive = activeParticles.length === 0;
 
     for (let i = 0; i < count; i++) {
@@ -1402,7 +1402,7 @@ function initFluidCursor() {
     false,
   );
 
-  window.addEventListener("touchend", (e) => {
+  window.addEventListener("touchend", () => {
     const pointer = pointers[0];
     updatePointerUpData(pointer);
   });
@@ -1664,7 +1664,7 @@ function initMemorialBoard() {
       oscGain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.35);
-    } catch (e) {
+    } catch {
       // Fallback simple beep
       playTone(150, "triangle", 0.4, 0.25);
     }
@@ -1805,7 +1805,7 @@ function initMemorialBoard() {
   try {
     const saved = localStorage.getItem("aidoge_respects_burned_v2");
     respectCount = saved ? BigInt(saved) : BigInt("22974464256141700");
-  } catch (err) {
+  } catch {
     respectCount = BigInt("22974464256141700");
   }
   if (respectCount < BigInt("22974464256141700")) {
@@ -2451,7 +2451,8 @@ class TextScrambler {
     let output = "";
     let complete = 0;
     for (let i = 0, n = this.queue.length; i < n; i++) {
-      let { from, to, start, end, char } = this.queue[i];
+      const { from, to, start, end } = this.queue[i];
+      let char = this.queue[i].char;
       if (this.frame >= end) {
         complete++;
         output += to;
@@ -2500,7 +2501,7 @@ function playQuantumBeep(
 
     osc.start();
     osc.stop(ctx.currentTime + duration);
-  } catch (e) {
+  } catch {
     // Audio context may be blocked by user gesture settings, ignore safely
   }
 }
@@ -3328,7 +3329,7 @@ function playSpatialUISound(type: string) {
       osc1.stop(now + 0.22);
       osc2.stop(now + 0.22);
     }
-  } catch (err) {
+  } catch {
     // Fail silently on security restriction block
   }
 }
@@ -3377,10 +3378,6 @@ function initQuantumCursor() {
 
   let mouseX = 0;
   let mouseY = 0;
-  const cursorX = 0;
-  const cursorY = 0;
-  let isMoving = false;
-  let moveTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // Track position
   window.addEventListener("mousemove", (e) => {
@@ -3388,13 +3385,6 @@ function initQuantumCursor() {
     mouseY = e.clientY;
 
     cursor.classList.add("active");
-    isMoving = true;
-
-    // Reset moving indicator on silence
-    if (moveTimeout) clearTimeout(moveTimeout);
-    moveTimeout = setTimeout(() => {
-      isMoving = false;
-    }, 150);
 
     // Spawn tiny space stardust sparkles on drift
     if (Math.random() > 0.6) {
@@ -3870,13 +3860,11 @@ function initDynamicHUDAndShadows() {
   const cards = document.querySelectorAll<HTMLElement>(
     ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container, .node-card",
   );
-  const radar = document.getElementById("hud-radar");
   const radarCoord = document.getElementById("radar-coord-val");
   const radarSector = document.getElementById("radar-sector-val");
 
   let mouseX = 0;
   let mouseY = 0;
-  let scrollY = window.scrollY;
 
   window.addEventListener("mousemove", (e) => {
     mouseX = e.clientX;
@@ -3969,7 +3957,6 @@ function initDynamicHUDAndShadows() {
 
   // Run on scroll and resize
   window.addEventListener("scroll", () => {
-    scrollY = window.scrollY;
     updateRadarActiveSector();
   });
   window.addEventListener("resize", updateRadarActiveSector);

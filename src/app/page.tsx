@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { initApp } from "./main";
+import Image from "next/image";
 
 export default function Home() {
   useEffect(() => {
@@ -16,9 +17,11 @@ export default function Home() {
           {/* Memorial Title */}
           <div className="memorial-header-title">
             <div className="header-logo-group">
-              <img
+              <Image
                 src="/img/AIDOGE_Logo.png"
                 alt="AIDOGE"
+                width={80}
+                height={80}
                 className="memorial-logo-spin"
               />
               <h2>ARBDOGE AI ECOSYSTEM PORTAL</h2>
@@ -118,8 +121,8 @@ export default function Home() {
                 <h3>COMMUNITY TRIBUTE ALTAR</h3>
                 <p className="altar-tagline">
                   The original arbdoge.ai contract remains immortal on Arbitrum,
-                  but the web interface has passed. Let's keep the memory alive.
-                  Burn a{" "}
+                  but the web interface has passed. Let&apos;s keep the memory
+                  alive. Burn a{" "}
                   <span className="glow-warning-text">VIRTUAL $AIDOGE</span> to
                   pay your respects.
                 </p>
@@ -414,9 +417,11 @@ export default function Home() {
             <div className="contract-label">CONTRACT ADDRESS (ARBITRUM)</div>
             <div className="contract-row">
               <div className="token-info-col">
-                <img
+                <Image
                   src="/img/AIDOGE_Logo.png"
                   alt="AIDOGE"
+                  width={80}
+                  height={80}
                   className="token-logo-img"
                 />
                 <span className="token-name-text">$AIDOGE:</span>
@@ -682,9 +687,9 @@ export default function Home() {
             <p className="tax-subheading">
               Every transaction of $AIDOGE on Arbitrum (Just DEX, no Tax for
               CEX!) is subject to an algorithmic 8% tax burn. This system fuels
-              the continuous deflationary engine and rewards the ecosystem's
-              pillars. Hover over the modules of the ring to view holographic
-              metrics.
+              the continuous deflationary engine and rewards the
+              ecosystem&apos;s pillars. Hover over the modules of the ring to
+              view holographic metrics.
             </p>
           </div>
 
@@ -789,9 +794,11 @@ export default function Home() {
                 {/* Center Display Console inside the donut hole */}
                 <div className="ring-core-display" id="ring-core">
                   <div className="core-logo-wrapper">
-                    <img
+                    <Image
                       src="/img/AIDOGE_Logo.png"
                       alt="AIDOGE"
+                      width={80}
+                      height={80}
                       className="core-spinning-logo"
                     />
                   </div>
