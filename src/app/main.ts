@@ -1,4 +1,10 @@
-// @ts-nocheck
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+    aidogeRespectCount?: bigint;
+  }
+}
+
 export function initApp() {
   const navbar = document.getElementById("navbar");
 
@@ -26,7 +32,7 @@ export function initApp() {
     const href = link.getAttribute("href");
 
     // Normalize path and href by stripping leading dot-slash or slash and index.html
-    const normalize = (path) => {
+    const normalize = (path: string) => {
       if (!path) return "";
       const p = path.replace(/^\.?\//, "");
       if (p === "" || p === "/" || p === "index.html") {
@@ -36,7 +42,7 @@ export function initApp() {
     };
 
     const normPath = normalize(currentPath);
-    const normHref = normalize(href);
+    const normHref = normalize(href ?? "");
 
     if (
       normPath === normHref ||
@@ -47,7 +53,18 @@ export function initApp() {
   });
 
   // Initialize Click Particle Explosion (bursting AIDOGE_Logo.png)
-  const activeParticles = [];
+  interface Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    rotation: number;
+    vRotation: number;
+    opacity: number;
+    element: HTMLElement;
+  }
+  const activeParticles: Particle[] = [];
 
   function animateParticles() {
     if (activeParticles.length === 0) return;
@@ -70,7 +87,7 @@ export function initApp() {
         activeParticles.splice(i, 1);
       } else {
         p.element.style.transform = `translate3d(${p.x - p.size / 2}px, ${p.y - p.size / 2}px, 0) rotate(${p.rotation}deg) scale(${p.opacity})`;
-        p.element.style.opacity = p.opacity;
+        p.element.style.opacity = `${p.opacity}`;
       }
     }
 
@@ -79,7 +96,7 @@ export function initApp() {
     }
   }
 
-  function spawnParticles(x, y) {
+  function spawnParticles(x: number, y: number) {
     const count = 10 + Math.floor(Math.random() * 8); // 10 to 18 particles
     const isFirstActive = activeParticles.length === 0;
 
@@ -147,10 +164,28 @@ export function initApp() {
     const contractCode = document.getElementById("contract-address");
     if (copyBtn && contractCode) {
       copyBtn.addEventListener("click", () => {
-        navigator.clipboard
-          .writeText(contractCode.textContent.trim())
-          .then(() => {
-            const btnLabel = copyBtn.querySelector(".btn-label");
+        const text = contractCode.textContent?.trim() ?? "";
+
+        const fallbackCopy = (text: string) => {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          try {
+            document.execCommand("copy");
+            showCopiedFeedback();
+          } catch (err) {
+            console.error("Fallback copy failed:", err);
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        };
+
+        const showCopiedFeedback = () => {
+          const btnLabel = copyBtn.querySelector(".btn-label");
+          if (btnLabel) {
             const originalText = btnLabel.textContent;
             btnLabel.textContent = "COPIED!";
             copyBtn.classList.add("copied");
@@ -158,10 +193,20 @@ export function initApp() {
               btnLabel.textContent = originalText;
               copyBtn.classList.remove("copied");
             }, 2000);
-          })
-          .catch((err) => {
-            console.error("Failed to copy address:", err);
-          });
+          }
+        };
+
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard
+            .writeText(text)
+            .then(showCopiedFeedback)
+            .catch((err) => {
+              console.error("Failed to copy address:", err);
+              fallbackCopy(text);
+            });
+        } else {
+          fallbackCopy(text);
+        }
       });
     }
 
@@ -247,62 +292,110 @@ function initFluidCursor() {
     TRANSPARENT: true,
   };
 
-  function pointerPrototype() {
-    this.id = -1;
-    this.texcoordX = 0;
-    this.texcoordY = 0;
-    this.prevTexcoordX = 0;
-    this.prevTexcoordY = 0;
-    this.deltaX = 0;
-    this.deltaY = 0;
-    this.down = false;
-    this.moved = false;
-    this.color = generateColor();
+  interface RGBColor {
+    r: number;
+    g: number;
+    b: number;
   }
 
-  const pointers = [];
-  pointers.push(new pointerPrototype());
+  interface FBO {
+    texture: WebGLTexture | null;
+    fbo: WebGLFramebuffer | null;
+    width: number;
+    height: number;
+    texelSizeX: number;
+    texelSizeY: number;
+    attach(id: number): number;
+  }
+
+  interface DoubleFBO {
+    width: number;
+    height: number;
+    texelSizeX: number;
+    texelSizeY: number;
+    read: FBO;
+    write: FBO;
+    swap(): void;
+  }
+
+  interface FormatInfo {
+    internalFormat: number;
+    format: number;
+  }
+
+  class PointerPrototype {
+    id: number = -1;
+    texcoordX: number = 0;
+    texcoordY: number = 0;
+    prevTexcoordX: number = 0;
+    prevTexcoordY: number = 0;
+    deltaX: number = 0;
+    deltaY: number = 0;
+    down: boolean = false;
+    moved: boolean = false;
+    color: RGBColor;
+    constructor() {
+      this.color = generateColor();
+    }
+  }
+
+  const pointers: PointerPrototype[] = [];
+  pointers.push(new PointerPrototype());
 
   // Safe WebGL context initialization
-  const params = {
+  const params: WebGLContextAttributes = {
     alpha: true,
     depth: false,
     stencil: false,
     antialias: false,
     preserveDrawingBuffer: false,
   };
-  let gl = canvas.getContext("webgl2", params);
-  const isWebGL2 = !!gl;
+  let glContext: WebGL2RenderingContext | WebGLRenderingContext | null =
+    canvas.getContext("webgl2", params);
+  const isWebGL2 = !!glContext;
   if (!isWebGL2) {
-    gl =
-      canvas.getContext("webgl", params) ||
-      canvas.getContext("experimental-webgl", params);
+    glContext =
+      (canvas.getContext("webgl", params) as WebGLRenderingContext | null) ||
+      (canvas.getContext(
+        "experimental-webgl",
+        params,
+      ) as WebGLRenderingContext | null);
   }
-  if (!gl) {
+  if (!glContext) {
     console.warn("WebGL not supported on this device.");
     return;
   }
+  const gl: WebGL2RenderingContext | WebGLRenderingContext = glContext;
 
-  let halfFloat;
-  let supportLinearFiltering;
+  let halfFloat: { HALF_FLOAT_OES: number } | null = null;
+  let supportLinearFiltering: unknown;
   if (isWebGL2) {
-    gl.getExtension("EXT_color_buffer_float");
-    supportLinearFiltering = gl.getExtension("OES_texture_float_linear");
+    const gl2 = gl as WebGL2RenderingContext;
+    gl2.getExtension("EXT_color_buffer_float");
+    supportLinearFiltering = gl2.getExtension("OES_texture_float_linear");
   } else {
-    halfFloat = gl.getExtension("OES_texture_half_float");
+    halfFloat = gl.getExtension("OES_texture_half_float") as {
+      HALF_FLOAT_OES: number;
+    } | null;
     supportLinearFiltering = gl.getExtension("OES_texture_half_float_linear");
   }
-
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  const halfFloatTexType = isWebGL2 ? gl.HALF_FLOAT : halfFloat.HALF_FLOAT_OES;
-
-  let formatRGBA;
-  let formatRG;
-  let formatR;
+  const halfFloatTexType = isWebGL2
+    ? (gl as WebGL2RenderingContext).HALF_FLOAT
+    : (halfFloat as { HALF_FLOAT_OES: number }).HALF_FLOAT_OES;
+  let formatRGBA: FormatInfo | null;
+  let formatRG: FormatInfo | null;
+  let formatR: FormatInfo | null;
   if (isWebGL2) {
-    formatRGBA = getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, halfFloatTexType);
-    formatRG = getSupportedFormat(gl, gl.RG16F, gl.RG, halfFloatTexType);
-    formatR = getSupportedFormat(gl, gl.R16F, gl.RED, halfFloatTexType);
+    const gl2 = gl as WebGL2RenderingContext;
+    formatRGBA = getSupportedFormat(
+      gl2,
+      gl2.RGBA16F,
+      gl2.RGBA,
+      halfFloatTexType,
+    );
+    formatRG = getSupportedFormat(gl2, gl2.RG16F, gl2.RG, halfFloatTexType);
+    formatR = getSupportedFormat(gl2, gl2.R16F, gl2.RED, halfFloatTexType);
   } else {
     formatRGBA = getSupportedFormat(gl, gl.RGBA, gl.RGBA, halfFloatTexType);
     formatRG = getSupportedFormat(gl, gl.RGBA, gl.RGBA, halfFloatTexType);
@@ -324,13 +417,19 @@ function initFluidCursor() {
 
   resizeCanvas();
 
-  function getSupportedFormat(gl, internalFormat, format, type) {
+  function getSupportedFormat(
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+    internalFormat: number,
+    format: number,
+    type: number,
+  ): FormatInfo | null {
     if (!supportRenderTextureFormat(gl, internalFormat, format, type)) {
+      const gl2 = gl as WebGL2RenderingContext;
       switch (internalFormat) {
-        case gl.R16F:
-          return getSupportedFormat(gl, gl.RG16F, gl.RG, type);
-        case gl.RG16F:
-          return getSupportedFormat(gl, gl.RGBA16F, gl.RGBA, type);
+        case gl2.R16F:
+          return getSupportedFormat(gl, gl2.RG16F, gl2.RG, type);
+        case gl2.RG16F:
+          return getSupportedFormat(gl, gl2.RGBA16F, gl2.RGBA, type);
         default:
           return null;
       }
@@ -338,7 +437,12 @@ function initFluidCursor() {
     return { internalFormat, format };
   }
 
-  function supportRenderTextureFormat(gl, internalFormat, format, type) {
+  function supportRenderTextureFormat(
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+    internalFormat: number,
+    format: number,
+    type: number,
+  ): boolean {
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -370,15 +474,22 @@ function initFluidCursor() {
     return status === gl.FRAMEBUFFER_COMPLETE;
   }
 
+  type UniformMap = Record<string, WebGLUniformLocation | null>;
+
   class Material {
-    constructor(vertexShader, fragmentShaderSource) {
+    vertexShader: WebGLShader;
+    fragmentShaderSource: string;
+    programs: WebGLProgram[];
+    activeProgram: WebGLProgram | null;
+    uniforms: UniformMap;
+    constructor(vertexShader: WebGLShader, fragmentShaderSource: string) {
       this.vertexShader = vertexShader;
       this.fragmentShaderSource = fragmentShaderSource;
       this.programs = [];
       this.activeProgram = null;
-      this.uniforms = [];
+      this.uniforms = {};
     }
-    setKeywords(keywords) {
+    setKeywords(keywords: string[]) {
       let hash = 0;
       for (let i = 0; i < keywords.length; i++) hash += hashCode(keywords[i]);
       let program = this.programs[hash];
@@ -401,7 +512,9 @@ function initFluidCursor() {
   }
 
   class Program {
-    constructor(vertexShader, fragmentShader) {
+    uniforms: UniformMap;
+    program: WebGLProgram;
+    constructor(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
       this.uniforms = {};
       this.program = createProgram(vertexShader, fragmentShader);
       this.uniforms = getUniforms(this.program);
@@ -411,8 +524,11 @@ function initFluidCursor() {
     }
   }
 
-  function createProgram(vertexShader, fragmentShader) {
-    const program = gl.createProgram();
+  function createProgram(
+    vertexShader: WebGLShader,
+    fragmentShader: WebGLShader,
+  ): WebGLProgram {
+    const program = gl.createProgram() as WebGLProgram;
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
@@ -422,19 +538,24 @@ function initFluidCursor() {
     return program;
   }
 
-  function getUniforms(program) {
-    const uniforms = [];
+  function getUniforms(program: WebGLProgram): UniformMap {
+    const uniforms: UniformMap = {};
     const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
     for (let i = 0; i < uniformCount; i++) {
-      const uniformName = gl.getActiveUniform(program, i).name;
+      const activeUniform = gl.getActiveUniform(program, i) as WebGLActiveInfo;
+      const uniformName = activeUniform.name;
       uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
     }
     return uniforms;
   }
 
-  function compileShader(type, source, keywords) {
+  function compileShader(
+    type: number,
+    source: string,
+    keywords?: string[],
+  ): WebGLShader {
     source = addKeywords(source, keywords);
-    const shader = gl.createShader(type);
+    const shader = gl.createShader(type) as WebGLShader;
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
@@ -443,10 +564,10 @@ function initFluidCursor() {
     return shader;
   }
 
-  function addKeywords(source, keywords) {
+  function addKeywords(source: string, keywords?: string[]): string {
     if (keywords == null) return source;
     let keywordsString = "";
-    keywords.forEach((keyword) => {
+    keywords.forEach((keyword: string) => {
       keywordsString += "#define " + keyword + "\n";
     });
     return keywordsString + source;
@@ -590,7 +711,7 @@ function initFluidCursor() {
            float decay = 1.0 + dissipation * dt;
            gl_FragColor = result / decay;
        }`,
-    ext.supportLinearFiltering ? null : ["MANUAL_FILTERING"],
+    ext.supportLinearFiltering ? undefined : ["MANUAL_FILTERING"],
   );
 
   const divergenceShader = compileShader(
@@ -738,7 +859,7 @@ function initFluidCursor() {
     );
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(0);
-    return (target, clear = false) => {
+    return (target: FBO | null, clear = false) => {
       if (target == null) {
         gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -754,11 +875,11 @@ function initFluidCursor() {
     };
   })();
 
-  let dye;
-  let velocity;
-  let divergence;
-  let curl;
-  let pressure;
+  let dye!: DoubleFBO;
+  let velocity!: DoubleFBO;
+  let divergence!: FBO;
+  let curl!: FBO;
+  let pressure!: DoubleFBO;
 
   const copyProgram = new Program(baseVertexShader, copyShader);
   const clearProgram = new Program(baseVertexShader, clearShader);
@@ -778,9 +899,9 @@ function initFluidCursor() {
     const simRes = getResolution(config.SIM_RESOLUTION);
     const dyeRes = getResolution(config.DYE_RESOLUTION);
     const texType = ext.halfFloatTexType;
-    const rgba = ext.formatRGBA;
-    const rg = ext.formatRG;
-    const r = ext.formatR;
+    const rgba = ext.formatRGBA!;
+    const rg = ext.formatRG!;
+    const r = ext.formatR!;
     const filtering = ext.supportLinearFiltering ? gl.LINEAR : gl.NEAREST;
 
     gl.disable(gl.BLEND);
@@ -853,7 +974,14 @@ function initFluidCursor() {
     );
   }
 
-  function createFBO(w, h, internalFormat, format, type, param) {
+  function createFBO(
+    w: number,
+    h: number,
+    internalFormat: number,
+    format: number,
+    type: number,
+    param: number,
+  ): FBO {
     gl.activeTexture(gl.TEXTURE0);
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -894,7 +1022,7 @@ function initFluidCursor() {
       height: h,
       texelSizeX,
       texelSizeY,
-      attach(id) {
+      attach(id: number) {
         gl.activeTexture(gl.TEXTURE0 + id);
         gl.bindTexture(gl.TEXTURE_2D, texture);
         return id;
@@ -902,7 +1030,14 @@ function initFluidCursor() {
     };
   }
 
-  function createDoubleFBO(w, h, internalFormat, format, type, param) {
+  function createDoubleFBO(
+    w: number,
+    h: number,
+    internalFormat: number,
+    format: number,
+    type: number,
+    param: number,
+  ): DoubleFBO {
     let fbo1 = createFBO(w, h, internalFormat, format, type, param);
     let fbo2 = createFBO(w, h, internalFormat, format, type, param);
     return {
@@ -930,7 +1065,15 @@ function initFluidCursor() {
     };
   }
 
-  function resizeFBO(target, w, h, internalFormat, format, type, param) {
+  function resizeFBO(
+    target: FBO,
+    w: number,
+    h: number,
+    internalFormat: number,
+    format: number,
+    type: number,
+    param: number,
+  ): FBO {
     const newFBO = createFBO(w, h, internalFormat, format, type, param);
     copyProgram.bind();
     gl.uniform1i(copyProgram.uniforms.uTexture, target.attach(0));
@@ -938,7 +1081,15 @@ function initFluidCursor() {
     return newFBO;
   }
 
-  function resizeDoubleFBO(target, w, h, internalFormat, format, type, param) {
+  function resizeDoubleFBO(
+    target: DoubleFBO,
+    w: number,
+    h: number,
+    internalFormat: number,
+    format: number,
+    type: number,
+    param: number,
+  ): DoubleFBO {
     if (target.width === w && target.height === h) return target;
     target.read = resizeFBO(
       target.read,
@@ -999,7 +1150,7 @@ function initFluidCursor() {
     return false;
   }
 
-  function updateColors(dt) {
+  function updateColors(dt: number) {
     colorUpdateTimer += dt * config.COLOR_UPDATE_SPEED;
     if (colorUpdateTimer >= 1) {
       colorUpdateTimer = wrap(colorUpdateTimer, 0, 1);
@@ -1018,7 +1169,7 @@ function initFluidCursor() {
     });
   }
 
-  function step(dt) {
+  function step(dt: number) {
     gl.disable(gl.BLEND);
     curlProgram.bind();
     gl.uniform2f(
@@ -1128,13 +1279,13 @@ function initFluidCursor() {
     dye.swap();
   }
 
-  function render(target) {
+  function render(target: FBO | null) {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.enable(gl.BLEND);
     drawDisplay(target);
   }
 
-  function drawDisplay(target) {
+  function drawDisplay(target: FBO | null) {
     const width = target == null ? gl.drawingBufferWidth : target.width;
     const height = target == null ? gl.drawingBufferHeight : target.height;
     displayMaterial.bind();
@@ -1149,13 +1300,13 @@ function initFluidCursor() {
     blit(target);
   }
 
-  function splatPointer(pointer) {
+  function splatPointer(pointer: PointerPrototype) {
     const dx = pointer.deltaX * config.SPLAT_FORCE;
     const dy = pointer.deltaY * config.SPLAT_FORCE;
     splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
   }
 
-  function clickSplat(pointer) {
+  function clickSplat(pointer: PointerPrototype) {
     const color = generateColor();
     color.r *= 10.0;
     color.g *= 10.0;
@@ -1165,7 +1316,13 @@ function initFluidCursor() {
     splat(pointer.texcoordX, pointer.texcoordY, dx, dy, color);
   }
 
-  function splat(x, y, dx, dy, color) {
+  function splat(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    color: RGBColor,
+  ) {
     splatProgram.bind();
     gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
     gl.uniform1f(
@@ -1187,7 +1344,7 @@ function initFluidCursor() {
     dye.swap();
   }
 
-  function correctRadius(radius) {
+  function correctRadius(radius: number) {
     const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio > 1) radius *= aspectRatio;
     return radius;
@@ -1250,7 +1407,12 @@ function initFluidCursor() {
     updatePointerUpData(pointer);
   });
 
-  function updatePointerDownData(pointer, id, posX, posY) {
+  function updatePointerDownData(
+    pointer: PointerPrototype,
+    id: number,
+    posX: number,
+    posY: number,
+  ) {
     pointer.id = id;
     pointer.down = true;
     pointer.moved = false;
@@ -1263,7 +1425,12 @@ function initFluidCursor() {
     pointer.color = generateColor();
   }
 
-  function updatePointerMoveData(pointer, posX, posY, color) {
+  function updatePointerMoveData(
+    pointer: PointerPrototype,
+    posX: number,
+    posY: number,
+    color: RGBColor,
+  ) {
     pointer.prevTexcoordX = pointer.texcoordX;
     pointer.prevTexcoordY = pointer.texcoordY;
     pointer.texcoordX = posX / canvas.width;
@@ -1275,23 +1442,23 @@ function initFluidCursor() {
     pointer.color = color;
   }
 
-  function updatePointerUpData(pointer) {
+  function updatePointerUpData(pointer: PointerPrototype) {
     pointer.down = false;
   }
 
-  function correctDeltaX(delta) {
+  function correctDeltaX(delta: number) {
     const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio < 1) delta *= aspectRatio;
     return delta;
   }
 
-  function correctDeltaY(delta) {
+  function correctDeltaY(delta: number) {
     const aspectRatio = canvas.width / canvas.height;
     if (aspectRatio > 1) delta /= aspectRatio;
     return delta;
   }
 
-  function generateColor() {
+  function generateColor(): RGBColor {
     const c = HSVtoRGB(Math.random(), 1.0, 1.0);
     // Bright neon-glowing color (perfectly visible over the dark layout)
     c.r *= 0.1;
@@ -1300,13 +1467,13 @@ function initFluidCursor() {
     return c;
   }
 
-  function HSVtoRGB(h, s, v) {
-    let r, g, b, i, f, p, q, t;
-    i = Math.floor(h * 6);
-    f = h * 6 - i;
-    p = v * (1 - s);
-    q = v * (1 - f * s);
-    t = v * (1 - (1 - f) * s);
+  function HSVtoRGB(h: number, s: number, v: number): RGBColor {
+    let r: number, g: number, b: number;
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
     switch (i % 6) {
       case 0:
         r = v;
@@ -1338,17 +1505,25 @@ function initFluidCursor() {
         g = p;
         b = q;
         break;
+      default:
+        r = 0;
+        g = 0;
+        b = 0;
+        break;
     }
     return { r, g, b };
   }
 
-  function wrap(value, min, max) {
+  function wrap(value: number, min: number, max: number): number {
     const range = max - min;
     if (range === 0) return min;
     return ((value - min) % range) + min;
   }
 
-  function getResolution(resolution) {
+  function getResolution(resolution: number): {
+    width: number;
+    height: number;
+  } {
     let aspectRatio = gl.drawingBufferWidth / gl.drawingBufferHeight;
     if (aspectRatio < 1) aspectRatio = 1.0 / aspectRatio;
     const min = Math.round(resolution);
@@ -1360,12 +1535,12 @@ function initFluidCursor() {
     }
   }
 
-  function scaleByPixelRatio(input) {
+  function scaleByPixelRatio(input: number): number {
     const pixelRatio = window.devicePixelRatio || 1;
     return Math.floor(input * pixelRatio);
   }
 
-  function hashCode(s) {
+  function hashCode(s: string): number {
     if (s.length === 0) return 0;
     let hash = 0;
     for (let i = 0; i < s.length; i++) {
@@ -1398,10 +1573,12 @@ function initMemorialBoard() {
   }
 
   // Web Audio Synth Function
-  let audioCtx = null;
-  function getAudioContext() {
+  let audioCtx: AudioContext | null = null;
+  function getAudioContext(): AudioContext {
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext!;
+      audioCtx = new AudioContextClass();
     }
     if (audioCtx.state === "suspended") {
       audioCtx.resume();
@@ -1409,7 +1586,12 @@ function initMemorialBoard() {
     return audioCtx;
   }
 
-  function playTone(freq, type = "sine", duration = 0.3, vol = 0.15) {
+  function playTone(
+    freq: number,
+    type: OscillatorType = "sine",
+    duration = 0.3,
+    vol = 0.15,
+  ) {
     if (!isSoundOn) return;
     try {
       const ctx = getAudioContext();
@@ -1550,9 +1732,9 @@ function initMemorialBoard() {
   const statVal1El = document.getElementById("stat-val-1");
   const statVal2El = document.getElementById("stat-val-2");
 
-  let currentTypewriterTimeout = null;
+  let currentTypewriterTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  function typeWriterText(text, element, speed = 10) {
+  function typeWriterText(text: string, element: HTMLElement, speed = 10) {
     if (currentTypewriterTimeout) {
       clearTimeout(currentTypewriterTimeout);
     }
@@ -1573,7 +1755,13 @@ function initMemorialBoard() {
   chipBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       const key = btn.getAttribute("data-archive");
-      const data = archiveData[key];
+      if (!key) return;
+      const data = (
+        archiveData as Record<
+          string,
+          (typeof archiveData)[keyof typeof archiveData]
+        >
+      )[key];
       if (!data) return;
 
       // Update active state
@@ -1613,7 +1801,7 @@ function initMemorialBoard() {
   const burnTickerEl = document.getElementById("burn-ticker");
 
   // Load persistence respects count
-  let respectCount;
+  let respectCount: bigint;
   try {
     const saved = localStorage.getItem("aidoge_respects_burned_v2");
     respectCount = saved ? BigInt(saved) : BigInt("22974464256141700");
@@ -1693,8 +1881,8 @@ function initMemorialBoard() {
     if (e.key === "f" || e.key === "F") {
       // Ignore if user is inside form inputs
       if (
-        document.activeElement.tagName === "INPUT" ||
-        document.activeElement.tagName === "TEXTAREA"
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA"
       ) {
         return;
       }
@@ -1703,20 +1891,24 @@ function initMemorialBoard() {
   });
 
   // --- Dynamic Canvas Burn Ashes Engine ---
-  const canvas = document.getElementById("burner-ashes");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const ashes = [];
-
-  function resizeCanvas() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
-  }
-
-  resizeCanvas();
-  window.addEventListener("resize", resizeCanvas);
+  const ashesCanvasEl = document.getElementById(
+    "burner-ashes",
+  ) as HTMLCanvasElement | null;
+  if (!ashesCanvasEl) return;
+  const canvas: HTMLCanvasElement = ashesCanvasEl;
+  const ashesCtx = canvas.getContext("2d");
+  if (!ashesCtx) return;
+  const ctx: CanvasRenderingContext2D = ashesCtx;
 
   class AshParticle {
+    x = 0;
+    y = 0;
+    size = 0;
+    vy = 0;
+    vx = 0;
+    alpha = 0;
+    fade = 0;
+    hue = 0;
     constructor() {
       this.reset();
       this.y = Math.random() * canvas.height; // scatter initially
@@ -1753,12 +1945,23 @@ function initMemorialBoard() {
     }
   }
 
+  const ashes: AshParticle[] = [];
+
+  function resizeCanvas() {
+    if (!canvas.parentElement) return;
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+  }
+
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
   // Pre-populate particles
   for (let i = 0; i < 35; i++) {
     ashes.push(new AshParticle());
   }
 
-  function spawnAshesSparks(count) {
+  function spawnAshesSparks(count: number) {
     for (let i = 0; i < count; i++) {
       const p = new AshParticle();
       p.reset(true);
@@ -1888,11 +2091,25 @@ function initMemorialBoard() {
     const totalTax = 8.0;
     let currentAngle = 0;
 
-    const segmentElements = [];
-    let lockedIndex = null;
+    interface DonutSegmentEntry {
+      element: SVGPathElement;
+      trigger: SVGPathElement;
+      tx: number;
+      ty: number;
+      data: (typeof taxData)[number];
+      index: number;
+    }
+
+    const segmentElements: DonutSegmentEntry[] = [];
+    let lockedIndex: number | null = null;
 
     // polarToCartesian and describeArc helpers
-    const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
+    const polarToCartesian = (
+      centerX: number,
+      centerY: number,
+      radius: number,
+      angleInDegrees: number,
+    ) => {
       const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
       return {
         x: centerX + radius * Math.cos(angleInRadians),
@@ -1901,11 +2118,11 @@ function initMemorialBoard() {
     };
 
     const describeArcClockwise = (
-      centerX,
-      centerY,
-      radius,
-      startAngle,
-      endAngle,
+      centerX: number,
+      centerY: number,
+      radius: number,
+      startAngle: number,
+      endAngle: number,
     ) => {
       const start = polarToCartesian(centerX, centerY, radius, startAngle);
       const end = polarToCartesian(centerX, centerY, radius, endAngle);
@@ -1980,7 +2197,7 @@ function initMemorialBoard() {
     });
 
     // Function to set high-end active element focus
-    const activateSegment = (index) => {
+    const activateSegment = (index: number) => {
       segmentElements.forEach((seg, idx) => {
         if (idx === index) {
           // Highlight and offset hovered segment
@@ -2113,7 +2330,7 @@ function initMemorialBoard() {
     };
 
     // Toggle lock state
-    const toggleLock = (index) => {
+    const toggleLock = (index: number) => {
       if (lockedIndex === index) {
         lockedIndex = null;
         legendCards.forEach((card) => card.classList.remove("locked"));
@@ -2151,7 +2368,7 @@ function initMemorialBoard() {
 
     // Attach legend card mouse listeners
     legendCards.forEach((card) => {
-      const index = parseInt(card.getAttribute("data-index"));
+      const index = parseInt(card.getAttribute("data-index") ?? "0", 10);
       card.addEventListener("mouseenter", () => {
         activateSegment(index);
       });
@@ -2180,7 +2397,7 @@ function initMemorialBoard() {
 
   // Trigger first archive load to pop up details initially
   setTimeout(() => {
-    const firstTab = document.querySelector(
+    const firstTab = document.querySelector<HTMLElement>(
       ".chip-btn[data-archive='genesis']",
     );
     if (firstTab) firstTab.click();
@@ -2192,16 +2409,31 @@ function initMemorialBoard() {
 // ==========================================================================
 
 // Scrambler class for cyberpunk decoding text effect
+interface ScrambleQueueItem {
+  from: string;
+  to: string;
+  start: number;
+  end: number;
+  char: string;
+}
+
 class TextScrambler {
-  constructor(el) {
+  el: HTMLElement;
+  chars: string;
+  queue: ScrambleQueueItem[] = [];
+  frame = 0;
+  frameRequest = 0;
+  resolve: () => void = () => {};
+
+  constructor(el: HTMLElement) {
     this.el = el;
     this.chars = "!<>-_\\/[]{}—=+*^?#________";
     this.update = this.update.bind(this);
   }
-  setText(newText) {
+  setText(newText: string) {
     const oldText = this.el.innerText || "";
     const length = Math.max(oldText.length, newText.length);
-    const promise = new Promise((resolve) => (this.resolve = resolve));
+    const promise = new Promise<void>((resolve) => (this.resolve = resolve));
     this.queue = [];
     for (let i = 0; i < length; i++) {
       const from = oldText[i] || "";
@@ -2245,8 +2477,8 @@ class TextScrambler {
 
 // Fallback high-tech synthesizer beeper
 function playQuantumBeep(
-  frequency,
-  type = "sine",
+  frequency: number,
+  type: OscillatorType = "sine",
   duration = 0.08,
   volume = 0.02,
 ) {
@@ -2376,7 +2608,7 @@ function initQuantumScrollEngine() {
   activePageSections.forEach((sec) => {
     const cardEl = document.getElementById(sec.id);
     if (cardEl) {
-      const headingEl = cardEl.querySelector(sec.headingSelector);
+      const headingEl = cardEl.querySelector<HTMLElement>(sec.headingSelector);
       if (headingEl) {
         scrambledElements.set(sec.id, {
           element: headingEl,
@@ -2430,6 +2662,7 @@ function initQuantumScrollEngine() {
   hudItems.forEach((item) => {
     item.addEventListener("click", () => {
       const targetId = item.getAttribute("data-target-id");
+      if (!targetId) return;
       const targetEl = document.getElementById(targetId);
       if (targetEl) {
         // High-frequency digital system compile tones
@@ -2535,7 +2768,7 @@ function initCyberLoader() {
   let currentProgress = 0;
   let logIndex = 0;
 
-  const typeLog = (text) => {
+  const typeLog = (text: string) => {
     if (!logs) return;
     const div = document.createElement("div");
     div.textContent = text;
@@ -2582,19 +2815,22 @@ function initCyberLoader() {
 }
 
 // 2. Synthesizer beat player using purely browser Web Audio API (Zero external bytes)
-let synthCtx = null;
-let synthGain = null;
+let synthCtx: AudioContext | null = null;
+let synthGain: GainNode | null = null;
 let synthPlaying = false;
-let arpInterval = null;
-let currentAnalyser = null;
-let visualizerAnimationFrame = null;
+let arpInterval: ReturnType<typeof setInterval> | null = null;
+let currentAnalyser: AnalyserNode | null = null;
+let visualizerAnimationFrame: number | null = null;
 
 function initSynthPlayer() {
   const synthPlayBtn = document.getElementById("synth-play-btn");
   const synthPlayerWidget = document.getElementById("navbar-synth-player");
-  const visualizerBars = document.querySelectorAll(".mini-visualizer .v-bar");
+  const visualizerBars = document.querySelectorAll<HTMLElement>(
+    ".mini-visualizer .v-bar",
+  );
 
   if (!synthPlayBtn) return;
+  if (!synthPlayerWidget) return;
 
   const updateVisualizer = () => {
     if (!synthPlaying || !currentAnalyser) {
@@ -2624,10 +2860,14 @@ function initSynthPlayer() {
   };
 
   const toggleSynth = () => {
+    const playIcon = synthPlayBtn.querySelector<HTMLElement>(".play-icon");
+    const trackLabel =
+      synthPlayBtn.querySelector<HTMLElement>(".synth-track-label");
+
     if (synthPlaying) {
       // Pause Synthesizer
       synthPlaying = false;
-      if (synthGain) {
+      if (synthGain && synthCtx) {
         synthGain.gain.exponentialRampToValueAtTime(
           0.0001,
           synthCtx.currentTime + 0.2,
@@ -2638,20 +2878,21 @@ function initSynthPlayer() {
         if (arpInterval) clearInterval(arpInterval);
       }, 200);
 
-      synthPlayBtn.querySelector(".play-icon").textContent = "▶";
-      synthPlayBtn.querySelector(".synth-track-label").textContent =
-        "CYBER BEAT";
+      if (playIcon) playIcon.textContent = "▶";
+      if (trackLabel) trackLabel.textContent = "CYBER BEAT";
       synthPlayerWidget.classList.remove("playing");
-      cancelAnimationFrame(visualizerAnimationFrame);
+      if (visualizerAnimationFrame) {
+        cancelAnimationFrame(visualizerAnimationFrame);
+      }
       updateVisualizer();
     } else {
       // Play / Boot Synthesizer
       synthPlaying = true;
       synthPlayerWidget.classList.add("playing");
-      synthPlayBtn.querySelector(".play-icon").textContent = "■";
-      synthPlayBtn.querySelector(".synth-track-label").textContent = "BEAT: ON";
+      if (playIcon) playIcon.textContent = "■";
+      if (trackLabel) trackLabel.textContent = "BEAT: ON";
 
-      if (!synthCtx) {
+      if (!synthCtx || !synthGain) {
         startSynthesizerBeat();
       } else {
         synthCtx.resume();
@@ -2712,9 +2953,19 @@ function startSequencerLoop() {
   ];
 
   const runSeqStep = () => {
-    if (!synthPlaying || !synthCtx || synthCtx.state === "suspended") return;
+    if (
+      !synthPlaying ||
+      !synthCtx ||
+      !synthGain ||
+      synthCtx.state === "suspended"
+    )
+      return;
 
-    const time = synthCtx.currentTime;
+    // Capture as locals so TypeScript can narrow them to non-null
+    // inside nested closures (e.g. the forEach below).
+    const ctx = synthCtx;
+    const gain = synthGain;
+    const time = ctx.currentTime;
     const chordIndex = Math.floor(step / 8) % progression.length;
     const chord = progression[chordIndex];
     const subStep = step % 8;
@@ -2722,9 +2973,9 @@ function startSequencerLoop() {
     // Trigger Bass and Chord drone on beat 0
     if (subStep === 0) {
       // 1. Sub Bass synth drone
-      const bOsc = synthCtx.createOscillator();
-      const bGain = synthCtx.createGain();
-      const bFilter = synthCtx.createBiquadFilter();
+      const bOsc = ctx.createOscillator();
+      const bGain = ctx.createGain();
+      const bFilter = ctx.createBiquadFilter();
 
       bOsc.type = "sawtooth";
       bOsc.frequency.setValueAtTime(chord.root / 2, time);
@@ -2741,16 +2992,16 @@ function startSequencerLoop() {
 
       bOsc.connect(bFilter);
       bFilter.connect(bGain);
-      bGain.connect(synthGain);
+      bGain.connect(gain);
 
       bOsc.start(time);
       bOsc.stop(time + beatDuration * 8);
 
       // 2. Beautiful drifting pads
       chord.notes.forEach((freq) => {
-        const cOsc = synthCtx.createOscillator();
-        const cGain = synthCtx.createGain();
-        const cFilter = synthCtx.createBiquadFilter();
+        const cOsc = ctx.createOscillator();
+        const cGain = ctx.createGain();
+        const cFilter = ctx.createBiquadFilter();
 
         cOsc.type = "triangle";
         cOsc.frequency.setValueAtTime(freq, time);
@@ -2771,7 +3022,7 @@ function startSequencerLoop() {
 
         cOsc.connect(cFilter);
         cFilter.connect(cGain);
-        cGain.connect(synthGain);
+        cGain.connect(gain);
 
         cOsc.start(time);
         cOsc.stop(time + beatDuration * 8);
@@ -2781,8 +3032,8 @@ function startSequencerLoop() {
     // 3. Arpeggiator melodic sparkles on sub-steps
     if (subStep % 2 === 0) {
       const noteFreq = chord.notes[(subStep / 2) % chord.notes.length] * 2; // Arp an octave higher
-      const aOsc = synthCtx.createOscillator();
-      const aGain = synthCtx.createGain();
+      const aOsc = ctx.createOscillator();
+      const aGain = ctx.createGain();
 
       aOsc.type = "sine";
       aOsc.frequency.setValueAtTime(noteFreq, time);
@@ -2795,7 +3046,7 @@ function startSequencerLoop() {
       );
 
       aOsc.connect(aGain);
-      aGain.connect(synthGain);
+      aGain.connect(gain);
 
       aOsc.start(time);
       aOsc.stop(time + beatDuration * 2);
@@ -2811,7 +3062,7 @@ function startSequencerLoop() {
 
 // 3. 3D Parallax Tilt Effects and Cursor Spotlight Border Glows
 function initLuxuryEffects() {
-  const targetEls = document.querySelectorAll(
+  const targetEls = document.querySelectorAll<HTMLElement>(
     ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container",
   );
 
@@ -2858,7 +3109,7 @@ function initLuxuryEffects() {
 // 4. Background Stardust Twinkle Canvas Overlay for Section containers
 function initCosmicStardust() {
   // Target the overlay/inner content containers which are on top of solid background images
-  const targets = document.querySelectorAll(
+  const targets = document.querySelectorAll<HTMLElement>(
     ".memorial-overlay, .community-content",
   );
 
@@ -2869,7 +3120,8 @@ function initCosmicStardust() {
     container.insertBefore(canvas, container.firstChild);
 
     const ctx = canvas.getContext("2d");
-    const stars = [];
+    if (!ctx) return;
+    const stars: Star[] = [];
 
     const resize = () => {
       canvas.width = container.clientWidth;
@@ -2879,6 +3131,16 @@ function initCosmicStardust() {
     window.addEventListener("resize", resize);
 
     class Star {
+      x!: number;
+      y!: number;
+      size!: number;
+      vy!: number;
+      phase!: number;
+      waveSpeed!: number;
+      alpha!: number;
+      maxAlpha!: number;
+      glowColor!: string;
+
       constructor() {
         this.reset();
         this.y = Math.random() * canvas.height; // scatter initially
@@ -2912,15 +3174,17 @@ function initCosmicStardust() {
         }
       }
       draw() {
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.shadowBlur = 14; // Increase shadow glow radius from 6 to 14
-        ctx.shadowColor = `hsla(${this.glowColor}, 100%, 65%, 0.85)`; // Brighter glow shadows
-        ctx.fillStyle = `hsla(${this.glowColor}, 100%, 85%, 1)`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        // Non-null assertion: `ctx` was already checked once above, but
+        // TypeScript can't carry that narrowing into a class method body.
+        ctx!.save();
+        ctx!.globalAlpha = this.alpha;
+        ctx!.shadowBlur = 14; // Increase shadow glow radius from 6 to 14
+        ctx!.shadowColor = `hsla(${this.glowColor}, 100%, 65%, 0.85)`; // Brighter glow shadows
+        ctx!.fillStyle = `hsla(${this.glowColor}, 100%, 85%, 1)`;
+        ctx!.beginPath();
+        ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx!.fill();
+        ctx!.restore();
       }
     }
 
@@ -2980,10 +3244,11 @@ function initAppSecondBlock() {
 /* ============================================================================
    FEATURE 6: SPATIAL UI SOUND DESIGN (SOUND BACKBONE)
    ============================================================================ */
-let spatialAudioCtx = null;
-function getSpatialAudioContext() {
+let spatialAudioCtx: AudioContext | null = null;
+function getSpatialAudioContext(): AudioContext {
   if (!spatialAudioCtx) {
-    spatialAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    spatialAudioCtx = new AudioContextCtor!();
   }
   if (spatialAudioCtx.state === "suspended") {
     spatialAudioCtx.resume();
@@ -2992,7 +3257,7 @@ function getSpatialAudioContext() {
 }
 
 // Helper to synthesize luxurious micro-interaction sound effects
-function playSpatialUISound(type) {
+function playSpatialUISound(type: string) {
   // Check if sound toggle is muted on the page (supports existing respect count audio config)
   const soundToggle = document.getElementById("respects-sound-toggle");
   if (soundToggle && soundToggle.classList.contains("muted")) return;
@@ -3071,7 +3336,7 @@ function playSpatialUISound(type) {
 function initSpatialUISound() {
   const attachSounds = () => {
     // Attach high-tech audio triggers to every meaningful interactive element on page
-    const elements = document.querySelectorAll(
+    const elements = document.querySelectorAll<HTMLElement>(
       "button, .nav-link, .social-card-btn, .table-action-btn, .chip-btn, .legend-card",
     );
     elements.forEach((el) => {
@@ -3115,7 +3380,7 @@ function initQuantumCursor() {
   const cursorX = 0;
   const cursorY = 0;
   let isMoving = false;
-  let moveTimeout = null;
+  let moveTimeout: ReturnType<typeof setTimeout> | undefined;
 
   // Track position
   window.addEventListener("mousemove", (e) => {
@@ -3158,7 +3423,7 @@ function initQuantumCursor() {
     cursor.classList.remove("active");
   });
 
-  function spawnCursorSparkle(x, y) {
+  function spawnCursorSparkle(x: number, y: number) {
     const sparkle = document.createElement("div");
     sparkle.className = "quantum-sparkle";
 
@@ -3185,7 +3450,7 @@ function initQuantumCursor() {
     setTimeout(() => sparkle.remove(), 600);
   }
 
-  function spawnClickRipple(x, y) {
+  function spawnClickRipple(x: number, y: number) {
     const ripple = document.createElement("div");
     ripple.className = "quantum-click-ripple";
     ripple.style.left = `${x}px`;
@@ -3199,11 +3464,26 @@ function initQuantumCursor() {
 /* ============================================================================
    FEATURE 8: LUMINOUS BURNING ANALYTICS (GLOW CHIP GRAPH)
    ============================================================================ */
+interface ChartParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  alpha: number;
+  life: number;
+  decay: number;
+}
+
 function initLuminousAnalytics() {
-  const canvas = document.getElementById("luminous-burn-chart");
+  const canvas = document.getElementById(
+    "luminous-burn-chart",
+  ) as HTMLCanvasElement | null;
   if (!canvas) return;
 
   const ctx = canvas.getContext("2d");
+  if (!ctx) return;
   let width = canvas.offsetWidth;
   let height = canvas.offsetHeight;
   canvas.width = width * window.devicePixelRatio;
@@ -3211,7 +3491,7 @@ function initLuminousAnalytics() {
   ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
   let buyPressure = 0;
-  let particles = [];
+  let particles: ChartParticle[] = [];
 
   // Get current burn count in Quadrillions from the global BigInt
   const getRespectsNum = () => {
@@ -3224,7 +3504,7 @@ function initLuminousAnalytics() {
 
   // Initialize sliding window of 18 points representing recent burn history
   const numPoints = 18;
-  const chartHistoryPoints = [];
+  const chartHistoryPoints: number[] = [];
   const startVal = smoothedRespects - 0.2;
   for (let i = 0; i < numPoints; i++) {
     const ratio = i / (numPoints - 1);
@@ -3256,8 +3536,8 @@ function initLuminousAnalytics() {
     if (e.key === "f" || e.key === "F") {
       // Check if inputs are focused to prevent annoying shortcuts
       if (
-        document.activeElement.tagName === "INPUT" ||
-        document.activeElement.tagName === "TEXTAREA"
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA"
       )
         return;
       triggerChartBurnSpike();
@@ -3293,8 +3573,10 @@ function initLuminousAnalytics() {
     if (!canvas || !ctx) return;
 
     // Handle resizes smoothly
-    const currentWidth = canvas.parentNode.clientWidth;
-    const currentHeight = canvas.parentNode.clientHeight;
+    const parentEl = canvas.parentNode as HTMLElement | null;
+    if (!parentEl) return;
+    const currentWidth = parentEl.clientWidth;
+    const currentHeight = parentEl.clientHeight;
     if (currentWidth !== width || currentHeight !== height) {
       width = currentWidth;
       height = currentHeight;
@@ -3526,7 +3808,7 @@ function initHolographicTimeline() {
 
   nodes.forEach((n) => observer.observe(n));
 
-  function triggerCardDecryption(node) {
+  function triggerCardDecryption(node: Element) {
     const descEl = node.querySelector(".node-desc");
     const titleEl = node.querySelector(".node-title");
     const headerEl = node.querySelector(".node-glitch-header");
@@ -3559,7 +3841,7 @@ function initHolographicTimeline() {
 
   // Glitch characters list
   const glyphs = "01_X_#_[_]_/_*_&_@_%_$_?_!";
-  function scrambleText(originalText, element, steps = 10) {
+  function scrambleText(originalText: string, element: Element, steps = 10) {
     let iteration = 0;
     const interval = setInterval(() => {
       element.textContent = originalText
@@ -3585,7 +3867,7 @@ function initHolographicTimeline() {
    FEATURE 10: SOLAR SHADOWS & FEATURE 11: HUD RADAR NAVIGATION
    ============================================================================ */
 function initDynamicHUDAndShadows() {
-  const cards = document.querySelectorAll(
+  const cards = document.querySelectorAll<HTMLElement>(
     ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container, .node-card",
   );
   const radar = document.getElementById("hud-radar");
