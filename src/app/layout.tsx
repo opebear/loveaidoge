@@ -63,8 +63,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      style={
+        {
+          "--home-bg-image": `url("${basePath}/img/aidoge_background.png")`,
+        } as React.CSSProperties
+      }
+    >
       <body>
         <ClientInit />
 

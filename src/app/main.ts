@@ -201,7 +201,7 @@ export function initApp() {
     for (let i = 0; i < count; i++) {
       const el = document.createElement("div");
       el.className = "click-particle";
-      el.style.backgroundImage = 'url("./img/AIDOGE_Logo.png")';
+      el.style.backgroundImage = `url("${process.env.NEXT_PUBLIC_BASE_PATH || ""}/img/AIDOGE_Logo.png")`;
 
       const size = 18 + Math.random() * 22; // 18px to 40px
       el.style.width = `${size}px`;

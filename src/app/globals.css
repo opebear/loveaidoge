@@ -257,7 +257,7 @@ p {
   margin: 0 24px 40px;
   border-radius: 16px;
   background:
-    url("/img/aidoge_background.png") padding-box,
+    var(--home-bg-image) padding-box,
     linear-gradient(135deg, var(--primary), var(--secondary)) border-box;
   background-repeat: no-repeat;
   background-size: cover;
@@ -1153,7 +1153,7 @@ p {
   margin: 0 24px 40px;
   border-radius: 16px;
   background:
-    url("/img/aidoge_background.png") padding-box,
+    var(--home-bg-image) padding-box,
     linear-gradient(135deg, var(--primary), var(--secondary)) border-box;
   background-repeat: no-repeat;
   background-size: cover;
