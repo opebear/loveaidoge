@@ -1572,11 +1572,11 @@ p {
   background: rgba(13, 13, 18, 0.6);
   border: 1px solid rgba(255, 42, 95, 0.15);
   border-radius: 12px;
-  padding: 30px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -1584,10 +1584,27 @@ p {
   box-sizing: border-box;
 }
 
+/* Combined header: candle icon + title/caption sit on one row instead of
+   stacking the flame graphic above the heading, saving vertical space. */
+.altar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.altar-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .altar-card h3 {
   font-family: var(--font-title);
-  font-size: 1.3rem;
-  letter-spacing: 2px;
+  font-size: 1.1rem;
+  letter-spacing: 1.5px;
   color: #ffffff;
   margin: 0;
   text-shadow: 0 0 10px rgba(255, 42, 95, 0.2);
@@ -1624,12 +1641,12 @@ p {
 .virtual-simulation-badge {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: rgba(255, 170, 0, 0.05);
   border: 1px solid rgba(255, 170, 0, 0.18);
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
-  margin: 5px 0;
+  margin: 0;
   text-align: left;
   max-width: 100%;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -1671,11 +1688,8 @@ p {
 
 /* Flame Animation */
 .altar-glowing-candle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 5px;
+  position: relative;
+  flex: 0 0 auto;
 }
 
 .candle-base {
@@ -1774,11 +1788,11 @@ p {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 42, 95, 0.2);
   width: 100%;
-  padding: 16px;
+  padding: 12px;
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   box-sizing: border-box;
 }
 
@@ -1789,7 +1803,7 @@ p {
 }
 
 .burn-val {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: var(--primary);
   text-shadow: 0 0 12px var(--primary-glow);
@@ -1811,7 +1825,7 @@ p {
 
 .tribute-burn-btn {
   flex-grow: 1;
-  padding: 14px 20px;
+  padding: 11px 18px;
   font-size: 11px;
   border-radius: 8px;
   background:
@@ -1847,7 +1861,7 @@ p {
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 120px;
+  height: 95px;
   pointer-events: none;
   z-index: 1;
 }
@@ -2509,25 +2523,24 @@ p {
   animation: holo-sweep-animation 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Bottom-left NAV_INDEX // Navigator panel */
+/* Left-edge NAV_INDEX // Navigator panel — drawer style: a small fixed
+   tab is docked on the left edge at ~1/3 of the viewport height; clicking
+   it slides the panel out to the right, clicking again slides it back
+   behind the tab. */
 .cyber-hud-nav {
   position: fixed;
-  bottom: 15px;
+  top: 33vh;
   left: 15px;
   z-index: 999;
-  background: rgba(8, 8, 14, 0.9);
-  border: 1px solid rgba(0, 240, 255, 0.18);
-  padding: 6px 10px;
-  border-radius: 5px;
-  box-shadow:
-    0 8px 25px rgba(0, 0, 0, 0.9),
-    inset 0 0 12px rgba(0, 240, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  /* flex-start (not center): when the panel expands, .hud-drawer-content
+     becomes taller than the tab, which grows the flex row's height. With
+     align-items:center that recentered the tab against the new taller
+     row and made it visually drop down. flex-start keeps the tab pinned
+     to the row's top edge, i.e. exactly where top:33vh put it, whether
+     the panel is open or closed. */
+  align-items: flex-start;
   pointer-events: auto;
-  border-left: 2px solid var(--secondary, #00f0ff);
-  width: 135px;
 }
 
 /* Responsive behavior: hide if viewport is super narrow to avoid overlapping mobile layouts */
@@ -2537,51 +2550,257 @@ p {
   }
 }
 
-.cyber-hud-nav:hover {
-  border-color: rgba(0, 240, 255, 0.45);
-  background: rgba(12, 12, 20, 0.95);
+/* Toggle tab: a small, always-visible round button — sized and styled to
+   match the other HUD buttons (e.g. .hud-settings-btn) rather than a tall
+   drawer tab. */
+.hud-drawer-tab {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 240, 255, 0.22);
+  border: 1.5px solid rgba(0, 240, 255, 0.85);
+  border-radius: 50%;
+  cursor: pointer;
+  color: #ffffff;
   box-shadow:
-    0 10px 30px rgba(0, 240, 255, 0.18),
-    inset 0 0 15px rgba(0, 240, 255, 0.08);
+    0 4px 14px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 240, 255, 0.5),
+    inset 0 0 8px rgba(0, 240, 255, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.3s ease;
+}
+
+.hud-drawer-tab:hover {
+  background: rgba(0, 240, 255, 0.35);
+  border-color: rgba(0, 240, 255, 1);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.9),
+    0 0 18px rgba(0, 240, 255, 0.4);
+}
+
+/* Arrow icon inside the tab, flips to show open/closed state */
+.hud-toggle-arrow {
+  display: inline-block;
+  font-size: 13px;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cyber-hud-nav.expanded .hud-toggle-arrow {
+  transform: rotate(180deg);
+}
+
+/* Actual panel content — collapses to width:0 when closed, expands to
+   full width on open, creating a slide-out-from-the-left effect. */
+.hud-drawer-content {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  background: rgba(8, 8, 14, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  border-left: 2px solid var(--secondary, #00f0ff);
+  border-radius: 6px;
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.9),
+    inset 0 0 12px rgba(0, 240, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    padding 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s ease 0.05s;
+  white-space: nowrap;
+}
+
+.cyber-hud-nav.expanded .hud-drawer-content {
+  width: 150px;
+  padding: 8px 12px;
+  margin-left: 6px;
+  opacity: 1;
 }
 
 .cyber-hud-nav .hud-section-header {
-  font-size: 8.5px;
+  font-size: 9.5px;
   color: #888899;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   letter-spacing: 1.2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 3px;
+  padding-bottom: 4px;
   font-weight: 700;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
+.hud-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .hud-index-count {
-  font-size: 7.5px;
+  font-size: 8.5px;
   color: var(--secondary, #00f0ff);
   background: rgba(0, 240, 255, 0.15);
-  padding: 0.5px 3px;
+  padding: 1px 4px;
   border-radius: 2px;
   border: 1px solid rgba(0, 240, 255, 0.15);
+}
+
+/* Gear button combining Beat + Sound mute toggles — has a real
+   background + border instead of a faint icon, so it clearly reads
+   as a clickable button. */
+.hud-settings-btn {
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  color: #d4d4d8;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.hud-settings-btn:hover {
+  color: var(--secondary, #00f0ff);
+  border-color: rgba(0, 240, 255, 0.6);
+  background: rgba(0, 240, 255, 0.18);
+  transform: rotate(35deg);
+}
+
+/* Dropdown panel holding the 2 toggles: Beat & Sound */
+.hud-settings-panel {
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hud-settings-panel.open {
+  display: flex;
+}
+
+.hud-settings-row {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #a1a1aa;
+  font-family: var(--font-title);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-align: left;
+  padding: 5px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-settings-row:hover {
+  color: #ffffff;
+  border-color: rgba(0, 240, 255, 0.25);
+  background: rgba(0, 240, 255, 0.05);
+}
+
+/* "Playing" state (beat is currently playing) */
+#hud-beat-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#hud-beat-toggle.playing {
+  color: var(--secondary, #00f0ff);
+  border-color: rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.08);
+  animation: pulseColor 2s infinite alternate;
+}
+
+/* Mini audio-equalizer bars shown next to the CYBER BEAT label — bounce
+   in place while the beat is playing, sit flat and dim while paused. */
+.beat-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 14px;
+  height: 11px;
+  flex: 0 0 auto;
+  opacity: 0.35;
+}
+
+.beat-eq span {
+  display: block;
+  width: 2px;
+  height: 100%;
+  background: currentColor;
+  border-radius: 1px;
+  transform: scaleY(0.15);
+  transform-origin: bottom;
+  animation: beat-eq-bounce 850ms ease-in-out infinite;
+  animation-play-state: paused;
+}
+
+#hud-beat-toggle.playing .beat-eq {
+  opacity: 1;
+}
+
+#hud-beat-toggle.playing .beat-eq span {
+  animation-play-state: running;
+}
+
+.beat-eq span:nth-child(1) {
+  animation-delay: 0ms;
+}
+.beat-eq span:nth-child(2) {
+  animation-delay: 180ms;
+}
+.beat-eq span:nth-child(3) {
+  animation-delay: 90ms;
+}
+.beat-eq span:nth-child(4) {
+  animation-delay: 270ms;
+}
+
+@keyframes beat-eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.15);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* "Muted" state */
+#respects-sound-toggle.muted {
+  color: var(--primary, #ff2a5f);
+  border-color: rgba(255, 42, 95, 0.35);
+  background: rgba(255, 42, 95, 0.06);
 }
 
 .cyber-hud-nav .hud-section-list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .cyber-hud-nav .hud-section-item {
-  font-size: 8.5px;
+  font-size: 9.5px;
   color: #a1a1aa;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   cursor: pointer;
-  padding: 3px 5px;
-  border-radius: 2px;
+  padding: 4px 6px;
+  border-radius: 3px;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   border: 1px solid transparent;
@@ -2595,8 +2814,8 @@ p {
 }
 
 .cyber-hud-nav .hud-section-item .sec-dot {
-  width: 3.5px;
-  height: 3.5px;
+  width: 4px;
+  height: 4px;
   background-color: #52525b;
   border-radius: 50%;
   transition: all 0.3s ease;
@@ -2741,66 +2960,11 @@ p {
    PREMIUM LUXURY GRAPHICS AND INTERACTIVE UI STYLES
    ========================================================================== */
 
-/* 1. Navbar Cyber Synth Player HUD styling */
-.navbar-synth-player {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255, 42, 95, 0.05);
-  border: 1px solid rgba(255, 42, 95, 0.15);
-  padding: 6px 14px;
-  border-radius: 50px;
-  box-shadow: 0 0 15px rgba(255, 42, 95, 0.05);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  margin: 0 15px;
-}
-
-.navbar-synth-player:hover {
-  border-color: rgba(0, 240, 255, 0.3);
-  background: rgba(0, 240, 255, 0.05);
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
-}
-
-.synth-play-btn {
-  background: transparent;
-  border: none;
-  color: #f1f1f3;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-title);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  padding: 0;
-  outline: none;
-  transition: all 0.3s ease;
-}
-
-.synth-play-btn .play-icon {
-  font-size: 11px;
-  color: var(--primary);
-  text-shadow: 0 0 8px var(--primary-glow);
-  transition: all 0.3s ease;
-}
-
-.synth-play-btn:hover .play-icon {
-  color: var(--secondary);
-  text-shadow: 0 0 10px var(--secondary-glow);
-}
-
-.navbar-synth-player.playing {
-  border-color: rgba(0, 240, 255, 0.4);
-  background: rgba(0, 240, 255, 0.08);
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.15);
-}
-
-.navbar-synth-player.playing .play-icon {
-  color: var(--secondary);
-  animation: pulseColor 2s infinite alternate;
-}
-
+/* 1. (The "CYBER BEAT" button that used to live in the navbar has been
+      merged into the settings panel on the INDEX panel — see
+      .hud-settings-btn / .hud-settings-panel above. The pulseColor
+      keyframe is kept because #hud-beat-toggle.playing still shares
+      this animation.) */
 @keyframes pulseColor {
   0% {
     color: var(--secondary);
@@ -2809,67 +2973,6 @@ p {
   100% {
     color: var(--primary);
     text-shadow: 0 0 12px var(--primary-glow);
-  }
-}
-
-.synth-track-label {
-  font-size: 9px;
-  color: #a1a1aa;
-  letter-spacing: 1px;
-}
-
-/* Mini visualizer bars */
-.mini-visualizer {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 12px;
-  width: auto;
-}
-
-.v-bar {
-  width: 2px;
-  height: 3px;
-  background-color: #52525b;
-  border-radius: 1px;
-  transition: all 0.3s ease;
-}
-
-.navbar-synth-player.playing .v-bar {
-  background-color: var(--secondary);
-  box-shadow: 0 0 5px var(--secondary-glow);
-  animation: bounceBar 1.2s infinite ease-in-out alternate;
-}
-
-.navbar-synth-player.playing .v-bar:nth-child(1) {
-  animation-delay: 0.1s;
-}
-.navbar-synth-player.playing .v-bar:nth-child(2) {
-  animation-delay: 0.4s;
-}
-.navbar-synth-player.playing .v-bar:nth-child(3) {
-  animation-delay: 0.2s;
-}
-.navbar-synth-player.playing .v-bar:nth-child(4) {
-  animation-delay: 0.5s;
-}
-.navbar-synth-player.playing .v-bar:nth-child(5) {
-  animation-delay: 0.3s;
-}
-
-@keyframes bounceBar {
-  0% {
-    height: 3px;
-  }
-  100% {
-    height: 12px;
-  }
-}
-
-/* Hide on tablet & mobile viewports if it overlaps */
-@media (max-width: 820px) {
-  .navbar-synth-player {
-    display: none;
   }
 }
 
@@ -3300,11 +3403,11 @@ textarea,
 
 /* --- FEATURE 8: LUMINOUS BURNING ANALYTICS --- */
 .luminous-analytics-widget {
-  margin-top: 20px;
+  margin-top: 0;
   background: rgba(8, 8, 12, 0.95);
   border: 1px solid rgba(0, 240, 255, 0.4);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
   box-shadow:
     0 0 15px rgba(0, 240, 255, 0.1),
     inset 0 0 10px rgba(0, 240, 255, 0.05);
@@ -3326,7 +3429,7 @@ textarea,
   font-weight: 700;
   color: #ffffff;
   letter-spacing: 0.12em;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   text-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
 }
@@ -3337,8 +3440,8 @@ textarea,
   background: rgba(15, 15, 25, 0.85);
   border: 1px solid rgba(0, 240, 255, 0.25);
   border-radius: 4px;
-  padding: 6px 10px;
-  margin-top: 8px;
+  padding: 5px 9px;
+  margin-top: 6px;
   font-size: 9.5px;
   letter-spacing: 0.05em;
   box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.05);
@@ -3368,8 +3471,8 @@ textarea,
 .analytics-chart-container {
   position: relative;
   width: 100%;
-  height: 95px;
-  margin: 10px 0;
+  height: 80px;
+  margin: 8px 0;
 }
 .analytics-chart-container canvas {
   width: 100%;
@@ -3919,20 +4022,20 @@ body {
     min-height: 200px !important;
   }
   .altar-card {
-    padding: 16px !important;
-    gap: 15px !important;
+    padding: 14px !important;
+    gap: 10px !important;
   }
   .burn-val {
-    font-size: 1.2rem !important;
+    font-size: 1.15rem !important;
   }
   .burn-stats-board {
-    padding: 12px !important;
-  }
-  .luminous-analytics-widget {
     padding: 10px !important;
   }
+  .luminous-analytics-widget {
+    padding: 8px !important;
+  }
   .analytics-chart-container {
-    height: 80px !important;
+    height: 70px !important;
   }
 }
 

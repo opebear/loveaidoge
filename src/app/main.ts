@@ -5,6 +5,104 @@ declare global {
   }
 }
 
+const boundGlobalListeners = new Set<string>();
+function bindGlobalOnce<K extends keyof WindowEventMap>(
+  key: string,
+  target: Window,
+  type: K,
+  handler: (ev: WindowEventMap[K]) => void,
+): void;
+function bindGlobalOnce(
+  key: string,
+  target: Document,
+  type: string,
+  handler: EventListenerOrEventListenerObject,
+): void;
+function bindGlobalOnce(
+  key: string,
+  target: Window | Document,
+  type: string,
+  handler: EventListenerOrEventListenerObject,
+) {
+  if (boundGlobalListeners.has(key)) return;
+  boundGlobalListeners.add(key);
+  target.addEventListener(type, handler as EventListenerOrEventListenerObject);
+}
+
+// --- Global "user gesture" tracker for the Web Audio Autoplay Policy -----------
+// Browsers only allow an AudioContext to start playing after a real user
+// gesture (click/keydown/touchstart) — mousemove, scroll, or an
+// IntersectionObserver/init function that auto-runs on page load don't
+// count. This flag is set exactly once, on the first real gesture; every
+// place that creates/resumes an AudioContext should check
+// `hasUserGesture()` first, to avoid the
+// "The AudioContext was not allowed to start... after a user gesture" warning.
+let userHasInteracted = false;
+function markUserGesture() {
+  userHasInteracted = true;
+}
+function hasUserGesture(): boolean {
+  return userHasInteracted;
+}
+
+// A single AudioContext shared by ALL short sound effects (tick/beep/chime)
+// on the page — instead of each feature creating its own AudioContext
+// (previously 3 separate contexts for memorial board, quantum beep, and
+// spatial UI sound). Merging them uses fewer resources and keeps the code
+// shorter. Returns `null` if there's no real user gesture yet, so we never
+// call resume()/create a context before a gesture — this was the cause of
+// the "The AudioContext was not allowed to start..." warning. Note: the
+// "CYBER BEAT" background music button (synthCtx) does NOT use this
+// context — it's already safe on its own (only initializes on click) and
+// has its own suspend/resume logic on play/pause.
+// Shared mute check: the single source of truth is the `sharedSoundMuted`
+// variable below (not the DOM). Every sound-playing function in this file
+// should call this instead of keeping its own on/off variable. We can't
+// use the "muted" class on #respects-sound-toggle as the source of truth
+// because that button is destroyed and rebuilt from scratch on every route
+// change (see initQuantumScrollEngine()), which would reset the class —
+// and the visual state — back to "not muted" on every navigation.
+let sharedSoundMuted = false;
+function isSoundMuted(): boolean {
+  return sharedSoundMuted;
+}
+
+let sharedAudioCtx: AudioContext | null = null;
+function getSharedAudioContext(): AudioContext | null {
+  if (!hasUserGesture()) return null;
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioContextCtor();
+  }
+  if (sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+}
+
+// --- Per-route cleanup registry -------------------------------------------------
+// Page-specific features (canvases, requestAnimationFrame loops, setInterval
+// timers, IntersectionObservers, window/document listeners) must be torn down
+// when the user navigates away, otherwise every navigation stacks a new copy
+// on top of the old one and the site gets progressively laggier.
+// Any init function that starts a continuous loop/timer/global listener should
+// call registerCleanup(() => { ...stop it... }) so cleanupApp() can undo it.
+let cleanupFns: Array<() => void> = [];
+function registerCleanup(fn: () => void) {
+  cleanupFns.push(fn);
+}
+export function cleanupApp() {
+  while (cleanupFns.length) {
+    const fn = cleanupFns.pop();
+    try {
+      fn?.();
+    } catch (err) {
+      console.warn("Cleanup error:", err);
+    }
+  }
+}
+
 export function initApp() {
   const navbar = document.getElementById("navbar");
 
@@ -21,7 +119,7 @@ export function initApp() {
     checkScroll();
 
     // Add scroll event listener
-    window.addEventListener("scroll", checkScroll);
+    bindGlobalOnce("navbar-scroll", window, "scroll", checkScroll);
   }
 
   // Dynamic active navbar link highlighter based on current path
@@ -139,15 +237,20 @@ export function initApp() {
   }
 
   // Handle click events on window
-  window.addEventListener("mousedown", (e) => {
+  bindGlobalOnce("particle-mousedown", window, "mousedown", (e) => {
+    markUserGesture();
     spawnParticles(e.clientX, e.clientY);
   });
 
-  window.addEventListener("touchstart", (e) => {
+  bindGlobalOnce("particle-touchstart", window, "touchstart", (e) => {
+    markUserGesture();
     if (e.touches && e.touches.length > 0) {
       spawnParticles(e.touches[0].clientX, e.touches[0].clientY);
     }
   });
+
+  // A real gesture can also be a keypress, not just a click/tap
+  bindGlobalOnce("mark-gesture-keydown", window, "keydown", markUserGesture);
 
   // Initialize WebGL Fluid Cursor background effect
   try {
@@ -239,6 +342,13 @@ export function initApp() {
     initQuantumScrollEngine();
   } catch (err) {
     console.warn("Could not load quantum scroll engine:", err);
+  }
+
+  // 4b. Merge Beat button + Sound mute button into one settings button on the INDEX panel
+  try {
+    initHudSettingsControls();
+  } catch (err) {
+    console.warn("Could not load HUD settings controls:", err);
   }
 
   // 5. Initialize Luxury Enhancements
@@ -1124,6 +1234,17 @@ function initFluidCursor() {
   function update() {
     const dt = calcDeltaTime();
     if (resizeCanvas()) initFramebuffers();
+    // Guard: when the canvas is temporarily 0x0 (e.g. the tab was
+    // minimized, a resize is mid-flight, or the component just remounted
+    // after Fast Refresh before layout settled), skip this frame instead
+    // of creating a 0x0 framebuffer/texture — this is the cause of the
+    // "GL_INVALID_FRAMEBUFFER_OPERATION: Attachment has zero size" and
+    // "texImage2D: width or height out of range" errors repeating hundreds
+    // of times.
+    if (canvas.width === 0 || canvas.height === 0) {
+      requestAnimationFrame(update);
+      return;
+    }
     updateColors(dt);
     applyInputs();
     step(dt);
@@ -1555,35 +1676,24 @@ function initMemorialBoard() {
   const memorialBoard = document.getElementById("memorial-board");
   if (!memorialBoard) return;
 
-  // Sound Config
-  let isSoundOn = true;
-  const soundToggle = document.getElementById("respects-sound-toggle");
-  if (soundToggle) {
-    soundToggle.addEventListener("click", () => {
-      isSoundOn = !isSoundOn;
-      if (isSoundOn) {
-        soundToggle.textContent = "🔊 SOUND ON";
-        soundToggle.classList.remove("muted");
-        playTone(600, "sine", 0.1); // friendly beep
-      } else {
-        soundToggle.textContent = "🔇 MUTED";
-        soundToggle.classList.add("muted");
-      }
-    });
-  }
+  // Guard against running twice on the same DOM element (e.g. React
+  // StrictMode invoking the effect twice in dev). On a genuine re-run
+  // (navigating away and back), React creates a brand-new #memorial-board,
+  // so this flag is naturally gone and the function still initializes
+  // normally.
+  if (memorialBoard.dataset.mbInit === "true") return;
+  memorialBoard.dataset.mbInit = "true";
 
-  // Web Audio Synth Function
-  let audioCtx: AudioContext | null = null;
-  function getAudioContext(): AudioContext {
-    if (!audioCtx) {
-      const AudioContextClass =
-        window.AudioContext || window.webkitAudioContext!;
-      audioCtx = new AudioContextClass();
-    }
-    if (audioCtx.state === "suspended") {
-      audioCtx.resume();
-    }
-    return audioCtx;
+  // Sound setup: the mute button is now created & wired inside
+  // initHudSettingsControls() (the combined settings panel on the INDEX
+  // panel), since that button doesn't exist in the DOM yet when this
+  // function runs. Here we only need to read the shared mute state via
+  // isSoundMuted().
+
+  // Web Audio Synth Function (shares a single AudioContext across the page — see
+  // getSharedAudioContext() above)
+  function getAudioContext(): AudioContext | null {
+    return getSharedAudioContext();
   }
 
   function playTone(
@@ -1592,9 +1702,10 @@ function initMemorialBoard() {
     duration = 0.3,
     vol = 0.15,
   ) {
-    if (!isSoundOn) return;
+    if (isSoundMuted()) return;
     try {
       const ctx = getAudioContext();
+      if (!ctx) return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -1618,9 +1729,10 @@ function initMemorialBoard() {
   }
 
   function playBurnSound() {
-    if (!isSoundOn) return;
+    if (isSoundMuted()) return;
     try {
       const ctx = getAudioContext();
+      if (!ctx) return;
       // Generate fire crackle white noise
       const bufferSize = ctx.sampleRate * 0.4; // 0.4 seconds
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -1877,7 +1989,7 @@ function initMemorialBoard() {
   }
 
   // Keyboard shortcut: Press "F" or "f" to pay respects
-  window.addEventListener("keydown", (e) => {
+  const mbKeydownHandler = (e: KeyboardEvent) => {
     if (e.key === "f" || e.key === "F") {
       // Ignore if user is inside form inputs
       if (
@@ -1888,7 +2000,11 @@ function initMemorialBoard() {
       }
       performRespectBurn();
     }
-  });
+  };
+  window.addEventListener("keydown", mbKeydownHandler);
+  registerCleanup(() =>
+    window.removeEventListener("keydown", mbKeydownHandler),
+  );
 
   // --- Dynamic Canvas Burn Ashes Engine ---
   const ashesCanvasEl = document.getElementById(
@@ -1955,6 +2071,7 @@ function initMemorialBoard() {
 
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
+  registerCleanup(() => window.removeEventListener("resize", resizeCanvas));
 
   // Pre-populate particles
   for (let i = 0; i < 35; i++) {
@@ -1977,7 +2094,9 @@ function initMemorialBoard() {
     }
   }
 
+  let ashesStopped = false;
   function animateAshes() {
+    if (ashesStopped) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // Draw subtle glowing vapor background at bottom
     const grad = ctx.createLinearGradient(0, canvas.height, 0, 0);
@@ -1995,6 +2114,9 @@ function initMemorialBoard() {
   }
 
   animateAshes();
+  registerCleanup(() => {
+    ashesStopped = true;
+  });
 
   // --- Dynamic 8% Tax Burn Interactive Chamber ---
   const taxData = [
@@ -2386,13 +2508,17 @@ function initMemorialBoard() {
     });
 
     // Reset lock when clicking anywhere else on the document
-    document.addEventListener("click", () => {
+    const mbDocClickHandler = () => {
       if (lockedIndex !== null) {
         lockedIndex = null;
         legendCards.forEach((card) => card.classList.remove("locked"));
         resetSegments();
       }
-    });
+    };
+    document.addEventListener("click", mbDocClickHandler);
+    registerCleanup(() =>
+      document.removeEventListener("click", mbDocClickHandler),
+    );
   }
 
   // Trigger first archive load to pop up details initially
@@ -2477,16 +2603,28 @@ class TextScrambler {
 }
 
 // Fallback high-tech synthesizer beeper
+// Reuse a single AudioContext instead of creating a new one on every call:
+// each `new AudioContext()` that's never closed leaks. When this function
+// gets called dozens of times in a row (e.g. every card scrolling into
+// view on page load), it used to spawn dozens of "orphan" contexts that
+// the browser blocks (no user gesture yet) and that never get released —
+// this was the main cause of the "AudioContext was not allowed to
+// start" and "AudioContext encountered an error from the audio device" warnings.
 function playQuantumBeep(
   frequency: number,
   type: OscillatorType = "sine",
   duration = 0.08,
   volume = 0.02,
 ) {
+  if (isSoundMuted()) return;
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
+    // Share a single AudioContext across the whole page (see
+    // getSharedAudioContext() above). Returns null if there's no real user
+    // gesture yet — e.g. the automatic chime right after the intro loader
+    // finishes on page load — so we silently skip instead of calling
+    // resume() and flooding the console with warnings.
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -2506,7 +2644,26 @@ function playQuantumBeep(
   }
 }
 
+// Track the active observer so it can be disconnected before creating a new
+// one, avoiding leaks when initQuantumScrollEngine() re-runs on every route change.
+let activeQuantumScrollObserver: IntersectionObserver | null = null;
+
 function initQuantumScrollEngine() {
+  // Clean up the INDEX panel / progress bar / back-to-top button injected
+  // into <body> on the previous navigation. These elements live outside
+  // React, so they don't get removed automatically on route change — if we
+  // don't clean up, every navigation stacks another copy on top and
+  // gradually slows the page down.
+  document
+    .querySelectorAll(
+      ".cyber-hud-nav, .quantum-scroll-tracker, #cyber-back-to-top",
+    )
+    .forEach((el) => el.remove());
+  if (activeQuantumScrollObserver) {
+    activeQuantumScrollObserver.disconnect();
+    activeQuantumScrollObserver = null;
+  }
+
   // 1. Define candidate sections on the page with their configurations
   const candidateSections = [
     {
@@ -2550,19 +2707,47 @@ function initQuantumScrollEngine() {
     `;
   });
 
-  // 3. Inject Bottom-Left Navigation HUD Markup
+  // 3. Inject Left-Edge Navigation HUD Markup
   const hudContainer = document.createElement("div");
   hudContainer.className = "cyber-hud-nav font-mono";
   hudContainer.innerHTML = `
-    <div class="hud-section-header">
-      <span>INDEX</span>
-      <span class="hud-index-count">0${activePageSections.length}</span>
-    </div>
-    <div class="hud-section-list">
-      ${sectionListHTML}
+    <button class="hud-drawer-tab" id="hud-drawer-tab" type="button" title="Open/close INDEX panel">
+      <span class="hud-toggle-arrow">▸</span>
+    </button>
+    <div class="hud-drawer-content">
+      <div class="hud-section-header">
+        <span>INDEX</span>
+        <div class="hud-header-right">
+          <span class="hud-index-count">0${activePageSections.length}</span>
+          <button class="hud-settings-btn" id="hud-settings-btn" type="button" title="Settings">⚙</button>
+        </div>
+      </div>
+      <div class="hud-settings-panel" id="hud-settings-panel">
+        <button class="hud-settings-row" id="hud-beat-toggle" type="button">
+          <span class="beat-label">▶ CYBER BEAT</span>
+          <span class="beat-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        </button>
+        <button class="hud-settings-row" id="respects-sound-toggle" type="button">🔊 SFX ON</button>
+      </div>
+      <div class="hud-section-list">
+        ${sectionListHTML}
+      </div>
     </div>
   `;
   document.body.appendChild(hudContainer);
+
+  // The INDEX panel is collapsed by default, leaving only a small tab
+  // docked on the left edge. Clicking the tab slides the whole panel out
+  // to the right; clicking again slides it back behind the tab. The gear
+  // button (⚙) only works once the panel is open, and is unrelated to
+  // opening/closing the tab itself.
+  const hudDrawerTab = document.getElementById("hud-drawer-tab");
+  if (hudDrawerTab) {
+    hudDrawerTab.addEventListener("click", () => {
+      hudContainer.classList.toggle("expanded");
+      playQuantumBeep(1000, "sine", 0.04, 0.02);
+    });
+  }
 
   // 4. Inject Dynamic Top Progress Tracker
   const trackerContainer = document.createElement("div");
@@ -2714,6 +2899,8 @@ function initQuantumScrollEngine() {
     });
   }, observerOptions);
 
+  activeQuantumScrollObserver = observer;
+
   // Bind observer to all active containers
   activePageSections.forEach((sec) => {
     const el = document.getElementById(sec.id);
@@ -2723,10 +2910,74 @@ function initQuantumScrollEngine() {
   });
 
   // Attach window scroll listeners
-  window.addEventListener("scroll", updateScrollProgress);
+  bindGlobalOnce(
+    "quantum-scroll-progress",
+    window,
+    "scroll",
+    updateScrollProgress,
+  );
 
   // Initial trigger
   updateScrollProgress();
+}
+
+// --- Combined settings panel (Beat + Sound mute) on the INDEX panel ------
+// Merges 2 previously separate buttons (the "CYBER BEAT" button in the
+// navbar, and the sound mute button in the Memorial Board) into a single
+// gear button (⚙) placed right on the INDEX panel to keep things compact.
+// Clicking the gear opens a small panel with the 2 toggle rows. Only
+// exists on pages that have the INDEX panel (where initQuantumScrollEngine()
+// created #hud-settings-btn) — other pages (e.g. Community) don't have it,
+// so this function silently no-ops.
+function initHudSettingsControls() {
+  const settingsBtn = document.getElementById("hud-settings-btn");
+  const settingsPanel = document.getElementById("hud-settings-panel");
+  if (!settingsBtn || !settingsPanel) return;
+
+  // Tiny helper to avoid double-binding the same click handler when this
+  // function re-runs on every route change (elements persist via dataset).
+  const wireOnce = (el: HTMLElement, handler: (e: MouseEvent) => void) => {
+    if (el.dataset.wired === "true") return;
+    el.dataset.wired = "true";
+    el.addEventListener("click", handler as EventListener);
+  };
+
+  wireOnce(settingsBtn, (e) => {
+    e.stopPropagation();
+    settingsPanel.classList.toggle("open");
+  });
+
+  // Close the settings panel on any click outside of it
+  bindGlobalOnce("hud-settings-outside-click", window, "click", (e) => {
+    if (!settingsPanel.contains(e.target as Node) && e.target !== settingsBtn) {
+      settingsPanel.classList.remove("open");
+    }
+  });
+
+  // Sound mute toggle — single source of truth is the `sharedSoundMuted`
+  // variable (see isSoundMuted() near the top of the file), not the DOM,
+  // because #respects-sound-toggle is a brand-new element every time this
+  // function reruns on a route change. Every sound-playing function
+  // (playSpatialUISound, playQuantumBeep, playTone, playBurnSound) checks
+  // isSoundMuted() to decide whether to play audio.
+  const soundToggle = document.getElementById("respects-sound-toggle");
+  if (soundToggle) {
+    // Reflect the actual current mute state on this newly-created button —
+    // otherwise it would always render as "not muted" regardless of what
+    // the user chose on a previous page.
+    soundToggle.classList.toggle("muted", sharedSoundMuted);
+    soundToggle.textContent = sharedSoundMuted ? "🔇 SFX OFF" : "🔊 SFX ON";
+
+    wireOnce(soundToggle, (e) => {
+      e.stopPropagation();
+      sharedSoundMuted = !sharedSoundMuted;
+      soundToggle.classList.toggle("muted", sharedSoundMuted);
+      soundToggle.textContent = sharedSoundMuted ? "🔇 SFX OFF" : "🔊 SFX ON";
+      if (!sharedSoundMuted) {
+        playSpatialUISound("click"); // confirms sound is back on
+      }
+    });
+  }
 }
 
 // ==========================================================================
@@ -2735,6 +2986,9 @@ function initQuantumScrollEngine() {
 
 // 1. High-Tech Cyber Loader with Real Logs & Smooth Decrypt Sequence
 function initCyberLoader() {
+  if (boundGlobalListeners.has("cyber-loader-init")) return;
+  boundGlobalListeners.add("cyber-loader-init");
+
   const loader = document.getElementById("cyber-loader");
   const fill = document.getElementById("loader-progress");
   const pct = document.getElementById("loader-pct");
@@ -2820,54 +3074,50 @@ let synthCtx: AudioContext | null = null;
 let synthGain: GainNode | null = null;
 let synthPlaying = false;
 let arpInterval: ReturnType<typeof setInterval> | null = null;
-let currentAnalyser: AnalyserNode | null = null;
-let visualizerAnimationFrame: number | null = null;
+// The beat plays by default; this only flips to true once the user
+// explicitly pauses it via the settings toggle, so autostart (below)
+// won't turn it back on behind their back.
+let beatDisabledByUser = false;
 
 function initSynthPlayer() {
-  const synthPlayBtn = document.getElementById("synth-play-btn");
-  const synthPlayerWidget = document.getElementById("navbar-synth-player");
-  const visualizerBars = document.querySelectorAll<HTMLElement>(
-    ".mini-visualizer .v-bar",
-  );
-
+  // The Beat button now lives inside the combined settings panel on the
+  // INDEX panel (created in initQuantumScrollEngine() -> only exists on
+  // pages that have the INDEX panel, e.g. the home page). If a page
+  // doesn't have it (e.g. Community), silently skip.
+  //
+  // Note: unlike most other "run once" inits in this file, this function
+  // is INTENDED to run again on every route change, because
+  // initQuantumScrollEngine() destroys and rebuilds the settings panel's
+  // DOM on every navigation — so #hud-beat-toggle is a brand-new element
+  // each time and needs its own fresh click listener (a one-time global
+  // guard here would leave every button after the first one dead).
+  const synthPlayBtn = document.getElementById("hud-beat-toggle");
   if (!synthPlayBtn) return;
-  if (!synthPlayerWidget) return;
 
-  const updateVisualizer = () => {
-    if (!synthPlaying || !currentAnalyser) {
-      visualizerBars.forEach((bar) => {
-        bar.style.height = "3px";
-        bar.style.backgroundColor = "#52525b";
-      });
-      return;
-    }
-
-    const dataArray = new Uint8Array(currentAnalyser.frequencyBinCount);
-    currentAnalyser.getByteFrequencyData(dataArray);
-
-    visualizerBars.forEach((bar, idx) => {
-      const dataVal = dataArray[idx % dataArray.length] || 0;
-      const height = Math.max(3, Math.min(12, (dataVal / 255) * 15));
-      bar.style.height = `${height}px`;
-      // Dynamic shift of bar colors from cyan to pink on frequency peaks
-      if (dataVal > 150) {
-        bar.style.backgroundColor = "var(--primary)";
-      } else {
-        bar.style.backgroundColor = "var(--secondary)";
-      }
-    });
-
-    visualizerAnimationFrame = requestAnimationFrame(updateVisualizer);
+  // The button now holds a label span + an animated equalizer-bar span
+  // (see .beat-eq in globals.css). Write text into the label only, so we
+  // never clobber the bar elements the way a plain textContent write would.
+  const beatLabel = synthPlayBtn.querySelector<HTMLElement>(".beat-label");
+  const setBeatLabel = (text: string) => {
+    if (beatLabel) beatLabel.textContent = text;
   };
 
-  const toggleSynth = () => {
-    const playIcon = synthPlayBtn.querySelector<HTMLElement>(".play-icon");
-    const trackLabel =
-      synthPlayBtn.querySelector<HTMLElement>(".synth-track-label");
+  // Reflect the actual current state on this newly-created button instead
+  // of always forcing "on" — otherwise navigating to a new page would
+  // visually turn the beat back on even after the user had paused it.
+  if (beatDisabledByUser) {
+    synthPlayBtn.classList.remove("playing");
+    setBeatLabel("▶ CYBER BEAT");
+  } else {
+    synthPlayBtn.classList.add("playing");
+    setBeatLabel("■ BEAT: ON");
+  }
 
+  const toggleSynth = () => {
     if (synthPlaying) {
       // Pause Synthesizer
       synthPlaying = false;
+      beatDisabledByUser = true;
       if (synthGain && synthCtx) {
         synthGain.gain.exponentialRampToValueAtTime(
           0.0001,
@@ -2879,19 +3129,14 @@ function initSynthPlayer() {
         if (arpInterval) clearInterval(arpInterval);
       }, 200);
 
-      if (playIcon) playIcon.textContent = "▶";
-      if (trackLabel) trackLabel.textContent = "CYBER BEAT";
-      synthPlayerWidget.classList.remove("playing");
-      if (visualizerAnimationFrame) {
-        cancelAnimationFrame(visualizerAnimationFrame);
-      }
-      updateVisualizer();
+      setBeatLabel("▶ CYBER BEAT");
+      synthPlayBtn.classList.remove("playing");
     } else {
       // Play / Boot Synthesizer
       synthPlaying = true;
-      synthPlayerWidget.classList.add("playing");
-      if (playIcon) playIcon.textContent = "■";
-      if (trackLabel) trackLabel.textContent = "BEAT: ON";
+      beatDisabledByUser = false;
+      synthPlayBtn.classList.add("playing");
+      setBeatLabel("■ BEAT: ON");
 
       if (!synthCtx || !synthGain) {
         startSynthesizerBeat();
@@ -2904,15 +3149,43 @@ function initSynthPlayer() {
         );
         startSequencerLoop();
       }
-
-      updateVisualizer();
     }
   };
 
-  synthPlayBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleSynth();
-  });
+  // Per-element guard (not a global one) since this function reruns on
+  // every route change against a brand-new button element each time.
+  if (synthPlayBtn.dataset.wired !== "true") {
+    synthPlayBtn.dataset.wired = "true";
+    synthPlayBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleSynth();
+    });
+  }
+
+  // Beat is ON by default: show the "on" state right away, then actually
+  // start the audio on the very first real user gesture anywhere on the
+  // page. Browsers block audio playback before a gesture, so this is as
+  // close to "autoplay on load" as the platform allows — turning it off
+  // afterwards is still available via the settings toggle above.
+  const autoStartBeat = (e: Event) => {
+    if (synthPlaying || beatDisabledByUser) return;
+    if (e.target instanceof Node && synthPlayBtn.contains(e.target)) return;
+    synthPlaying = true;
+    startSynthesizerBeat();
+  };
+  bindGlobalOnce(
+    "beat-autostart-mousedown",
+    window,
+    "mousedown",
+    autoStartBeat,
+  );
+  bindGlobalOnce(
+    "beat-autostart-touchstart",
+    window,
+    "touchstart",
+    autoStartBeat,
+  );
+  bindGlobalOnce("beat-autostart-keydown", window, "keydown", autoStartBeat);
 }
 
 function startSynthesizerBeat() {
@@ -2926,14 +3199,10 @@ function startSynthesizerBeat() {
   compressor.ratio.setValueAtTime(12, synthCtx.currentTime);
   compressor.connect(synthCtx.destination);
 
-  currentAnalyser = synthCtx.createAnalyser();
-  currentAnalyser.fftSize = 32;
-  currentAnalyser.connect(compressor);
-
   synthGain = synthCtx.createGain();
   synthGain.gain.setValueAtTime(0, synthCtx.currentTime);
   synthGain.gain.exponentialRampToValueAtTime(0.08, synthCtx.currentTime + 0.4);
-  synthGain.connect(currentAnalyser);
+  synthGain.connect(compressor);
 
   startSequencerLoop();
 }
@@ -3094,8 +3363,8 @@ function initLuxuryEffects() {
       const height = rect.height;
       const centerX = width / 2;
       const centerY = height / 2;
-      const rotateX = ((y - centerY) / centerY) * -6;
-      const rotateY = ((x - centerX) / centerX) * 6;
+      const rotateX = ((y - centerY) / centerY) * -3;
+      const rotateY = ((x - centerX) / centerX) * 3;
 
       el.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.015, 1.015, 1.015)`;
     });
@@ -3130,6 +3399,7 @@ function initCosmicStardust() {
     };
     resize();
     window.addEventListener("resize", resize);
+    registerCleanup(() => window.removeEventListener("resize", resize));
 
     class Star {
       x!: number;
@@ -3195,7 +3465,9 @@ function initCosmicStardust() {
       stars.push(new Star());
     }
 
+    let stardustStopped = false;
     const animate = () => {
+      if (stardustStopped) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       stars.forEach((s) => {
         s.update();
@@ -3204,6 +3476,9 @@ function initCosmicStardust() {
       requestAnimationFrame(animate);
     };
     animate();
+    registerCleanup(() => {
+      stardustStopped = true;
+    });
   });
 }
 
@@ -3245,26 +3520,20 @@ function initAppSecondBlock() {
 /* ============================================================================
    FEATURE 6: SPATIAL UI SOUND DESIGN (SOUND BACKBONE)
    ============================================================================ */
-let spatialAudioCtx: AudioContext | null = null;
-function getSpatialAudioContext(): AudioContext {
-  if (!spatialAudioCtx) {
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    spatialAudioCtx = new AudioContextCtor!();
-  }
-  if (spatialAudioCtx.state === "suspended") {
-    spatialAudioCtx.resume();
-  }
-  return spatialAudioCtx;
+function getSpatialAudioContext(): AudioContext | null {
+  // Reuse a single shared AudioContext for the whole page (see
+  // getSharedAudioContext() at the top of the file) instead of creating a
+  // separate third context.
+  return getSharedAudioContext();
 }
 
 // Helper to synthesize luxurious micro-interaction sound effects
 function playSpatialUISound(type: string) {
-  // Check if sound toggle is muted on the page (supports existing respect count audio config)
-  const soundToggle = document.getElementById("respects-sound-toggle");
-  if (soundToggle && soundToggle.classList.contains("muted")) return;
+  if (isSoundMuted()) return;
 
   try {
     const ctx = getSpatialAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     if (type === "hover") {
@@ -3366,13 +3635,19 @@ function initSpatialUISound() {
   attachSounds();
 
   // Re-run periodically to cover dynamically spawned tables or items
-  setInterval(attachSounds, 2000);
+  if (!boundGlobalListeners.has("spatial-ui-sound-poll")) {
+    boundGlobalListeners.add("spatial-ui-sound-poll");
+    setInterval(attachSounds, 2000);
+  }
 }
 
 /* ============================================================================
    FEATURE 9: QUANTUM TARGET CURSOR RETICLE & SPARKLE TRAILS
    ============================================================================ */
 function initQuantumCursor() {
+  if (boundGlobalListeners.has("quantum-cursor-init")) return;
+  boundGlobalListeners.add("quantum-cursor-init");
+
   const cursor = document.getElementById("quantum-cursor");
   if (!cursor) return;
 
@@ -3471,6 +3746,8 @@ function initLuminousAnalytics() {
     "luminous-burn-chart",
   ) as HTMLCanvasElement | null;
   if (!canvas) return;
+  if (canvas.dataset.laInit === "true") return;
+  canvas.dataset.laInit = "true";
 
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -3505,13 +3782,14 @@ function initLuminousAnalytics() {
   }
 
   // Active scrolling: push a new organic live value and shift out the oldest every 1.5 seconds
-  setInterval(() => {
+  const laInterval = setInterval(() => {
     const rVal = getRespectsNum();
     // Add micro-noise to make it look like active global decentralized updates
     const noise = (Math.random() - 0.45) * 0.0015;
     chartHistoryPoints.push(rVal + noise);
     chartHistoryPoints.shift();
   }, 1500);
+  registerCleanup(() => clearInterval(laInterval));
 
   // Monitor clicks on respects burner to inject dynamic spikes and particle flows
   const burnRespectsBtn = document.getElementById("burn-respects-btn");
@@ -3522,7 +3800,7 @@ function initLuminousAnalytics() {
   }
 
   // Handle keyboard shortcut F key respects click
-  window.addEventListener("keydown", (e) => {
+  const laKeydownHandler = (e: KeyboardEvent) => {
     if (e.key === "f" || e.key === "F") {
       // Check if inputs are focused to prevent annoying shortcuts
       if (
@@ -3532,7 +3810,11 @@ function initLuminousAnalytics() {
         return;
       triggerChartBurnSpike();
     }
-  });
+  };
+  window.addEventListener("keydown", laKeydownHandler);
+  registerCleanup(() =>
+    window.removeEventListener("keydown", laKeydownHandler),
+  );
 
   function triggerChartBurnSpike() {
     // Generate explosive buy pressure surge
@@ -3559,8 +3841,9 @@ function initLuminousAnalytics() {
   }
 
   // Main drawing loop
+  let chartStopped = false;
   const drawChart = () => {
-    if (!canvas || !ctx) return;
+    if (chartStopped || !canvas || !ctx) return;
 
     // Handle resizes smoothly
     const parentEl = canvas.parentNode as HTMLElement | null;
@@ -3762,6 +4045,9 @@ function initLuminousAnalytics() {
   };
 
   drawChart();
+  registerCleanup(() => {
+    chartStopped = true;
+  });
 }
 
 /* ============================================================================
@@ -3797,6 +4083,7 @@ function initHolographicTimeline() {
   }, observerOptions);
 
   nodes.forEach((n) => observer.observe(n));
+  registerCleanup(() => observer.disconnect());
 
   function triggerCardDecryption(node: Element) {
     const descEl = node.querySelector(".node-desc");
@@ -3857,16 +4144,19 @@ function initHolographicTimeline() {
    FEATURE 10: SOLAR SHADOWS & FEATURE 11: HUD RADAR NAVIGATION
    ============================================================================ */
 function initDynamicHUDAndShadows() {
-  const cards = document.querySelectorAll<HTMLElement>(
-    ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container, .node-card",
-  );
   const radarCoord = document.getElementById("radar-coord-val");
   const radarSector = document.getElementById("radar-sector-val");
 
   let mouseX = 0;
   let mouseY = 0;
 
-  window.addEventListener("mousemove", (e) => {
+  // Flag marking the very first run (right when the page loads, before any
+  // user interaction). Don't play sound on this run, to avoid violating the
+  // browser's Web Audio Autoplay Policy (the cause of the
+  // "The AudioContext was not allowed to start... after a user gesture" warning).
+  let hasInitializedSector = false;
+
+  bindGlobalOnce("hud-shadow-mousemove", window, "mousemove", (e) => {
     mouseX = e.clientX;
     mouseY = e.clientY;
 
@@ -3879,6 +4169,12 @@ function initDynamicHUDAndShadows() {
     }
 
     // --- FEATURE 10: DYNAMIC SOLAR SHADOW MAPPING ---
+    // Re-query every time instead of caching once when initApp() runs,
+    // because these cards (.social-card, .terminal-container, ...) get
+    // destroyed/recreated on page change.
+    const cards = document.querySelectorAll<HTMLElement>(
+      ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container, .node-card",
+    );
     cards.forEach((card) => {
       const rect = card.getBoundingClientRect();
       const cardCX = rect.left + rect.width / 2;
@@ -3913,18 +4209,19 @@ function initDynamicHUDAndShadows() {
   });
 
   // --- FEATURE 11: HUD RADAR ACTIVE SECTOR TRACKING ---
-  const sectors = [
-    { id: "SECTOR_MEMOR", el: document.getElementById("memorial-board") },
-    {
-      id: "SECTOR_CHRONO",
-      el: document.getElementById("memory-timeline-section"),
-    },
-    { id: "SECTOR_TERMINAL", el: document.getElementById("token-terminal") },
-    { id: "SECTOR_TAX_ENG", el: document.getElementById("tax-dashboard") },
-    { id: "SECTOR_SOCIAL", el: document.getElementById("community-box") },
-  ];
-
   const updateRadarActiveSector = () => {
+    // Re-query every time since these sections are page-specific.
+    const sectors = [
+      { id: "SECTOR_MEMOR", el: document.getElementById("memorial-board") },
+      {
+        id: "SECTOR_CHRONO",
+        el: document.getElementById("memory-timeline-section"),
+      },
+      { id: "SECTOR_TERMINAL", el: document.getElementById("token-terminal") },
+      { id: "SECTOR_TAX_ENG", el: document.getElementById("tax-dashboard") },
+      { id: "SECTOR_SOCIAL", el: document.getElementById("community-box") },
+    ];
+
     const viewportHeightCenter = window.innerHeight / 2;
     let closestSector = "SECTOR_VOID";
     let minDistance = Infinity;
@@ -3950,17 +4247,21 @@ function initDynamicHUDAndShadows() {
 
     if (radarSector && radarSector.textContent !== closestSector) {
       radarSector.textContent = closestSector;
-      // Trigger subtle chime beep on sector change
-      playSpatialUISound("hover");
+      // Trigger subtle chime beep on sector change (skipped on the very
+      // first run, since there's no user interaction yet to unlock audio).
+      if (hasInitializedSector) {
+        playSpatialUISound("hover");
+      }
     }
   };
 
   // Run on scroll and resize
-  window.addEventListener("scroll", () => {
+  bindGlobalOnce("hud-radar-scroll", window, "scroll", () => {
     updateRadarActiveSector();
   });
-  window.addEventListener("resize", updateRadarActiveSector);
+  bindGlobalOnce("hud-radar-resize", window, "resize", updateRadarActiveSector);
 
-  // Initial run
+  // Initial run (no sound played — see the hasInitializedSector flag above)
   updateRadarActiveSector();
+  hasInitializedSector = true;
 }

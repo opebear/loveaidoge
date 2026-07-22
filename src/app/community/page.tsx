@@ -1,13 +1,8 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { initApp } from "../main";
+import React from "react";
 
 export default function Community() {
-  useEffect(() => {
-    initApp();
-  }, []);
-
   return (
     <>
       <p>Join the AIDoge CTO Community</p>

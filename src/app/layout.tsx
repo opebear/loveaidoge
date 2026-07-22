@@ -2,6 +2,7 @@ import "./globals.css";
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import ClientInit from "./ClientInit";
 
 export const metadata = {
   title: "AIDogeCTO.com",
@@ -65,6 +66,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <ClientInit />
+
         {/* Premium High-Tech Loader Overlay */}
         <div
           id="cyber-loader"
@@ -114,27 +117,9 @@ export default function RootLayout({
                 height={50}
               />
             </Link>
-            {/* Dynamic Synth Wave Player */}
-            <div
-              className="navbar-synth-player font-mono"
-              id="navbar-synth-player"
-            >
-              <button
-                className="synth-play-btn"
-                id="synth-play-btn"
-                title="Click to play Cyber Synth Background Loop"
-              >
-                <span className="play-icon">▶</span>
-                <span className="synth-track-label">CYBER BEAT</span>
-              </button>
-              <div className="mini-visualizer" id="mini-visualizer">
-                <span className="v-bar"></span>
-                <span className="v-bar"></span>
-                <span className="v-bar"></span>
-                <span className="v-bar"></span>
-                <span className="v-bar"></span>
-              </div>
-            </div>
+            {/* The "CYBER BEAT" button that used to be here was merged into
+                the settings gear (⚙) on the INDEX panel, alongside the
+                sound mute button — see initHudSettingsControls() in main.ts */}
             <div className="navbar-links">
               <Link href="/" className="nav-link">
                 Home

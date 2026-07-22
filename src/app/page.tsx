@@ -1,14 +1,9 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { initApp } from "./main";
+import React from "react";
 import Image from "next/image";
 
 export default function Home() {
-  useEffect(() => {
-    initApp();
-  }, []);
-
   return (
     <>
       <p>Never Go Back To My Old Life!</p>
@@ -110,15 +105,19 @@ export default function Home() {
             {/* Right Column: Interactive Memorial Altar & Token Burner */}
             <div className="memorial-altar">
               <div className="altar-card">
-                <div className="altar-glowing-candle">
-                  <div className="candle-base">
-                    <div className="candle-flame"></div>
-                    <div className="candle-glow"></div>
+                <div className="altar-header">
+                  <div className="altar-glowing-candle">
+                    <div className="candle-base">
+                      <div className="candle-flame"></div>
+                      <div className="candle-glow"></div>
+                    </div>
                   </div>
-                  <div className="candle-text font-mono">MEMORIAL FLAME</div>
+                  <div className="altar-header-text">
+                    <h3>COMMUNITY TRIBUTE ALTAR</h3>
+                    <span className="candle-text">MEMORIAL FLAME</span>
+                  </div>
                 </div>
 
-                <h3>COMMUNITY TRIBUTE ALTAR</h3>
                 <p className="altar-tagline">
                   The original arbdoge.ai contract remains immortal on Arbitrum,
                   but the web interface has passed. Let&apos;s keep the memory
@@ -159,12 +158,6 @@ export default function Home() {
                     <span className="btn-label">
                       🔥 VIRTUAL BURN $AIDOGE (PRESS F)
                     </span>
-                  </button>
-                  <button
-                    className="audio-toggle-btn font-mono"
-                    id="respects-sound-toggle"
-                  >
-                    🔊 SOUND ON
                   </button>
                 </div>
 
