@@ -88,7 +88,7 @@ function getSharedAudioContext(): AudioContext | null {
 // on top of the old one and the site gets progressively laggier.
 // Any init function that starts a continuous loop/timer/global listener should
 // call registerCleanup(() => { ...stop it... }) so cleanupApp() can undo it.
-let cleanupFns: Array<() => void> = [];
+const cleanupFns: Array<() => void> = [];
 function registerCleanup(fn: () => void) {
   cleanupFns.push(fn);
 }
