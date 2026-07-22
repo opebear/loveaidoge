@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
+import { withBasePath } from "./lib/basePath";
 
 export default function Home() {
   return (
@@ -13,7 +14,7 @@ export default function Home() {
           <div className="memorial-header-title">
             <div className="header-logo-group">
               <Image
-                src="/img/AIDOGE_Logo.png"
+                src={withBasePath("/img/AIDOGE_Logo.png")}
                 alt="AIDOGE"
                 width={80}
                 height={80}
@@ -411,7 +412,7 @@ export default function Home() {
             <div className="contract-row">
               <div className="token-info-col">
                 <Image
-                  src="/img/AIDOGE_Logo.png"
+                  src={withBasePath("/img/AIDOGE_Logo.png")}
                   alt="AIDOGE"
                   width={80}
                   height={80}
@@ -788,7 +789,7 @@ export default function Home() {
                 <div className="ring-core-display" id="ring-core">
                   <div className="core-logo-wrapper">
                     <Image
-                      src="/img/AIDOGE_Logo.png"
+                      src={withBasePath("/img/AIDOGE_Logo.png")}
                       alt="AIDOGE"
                       width={80}
                       height={80}
