@@ -103,6 +103,8 @@ body {
 .navbar-container {
   padding: 10px 24px;
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 6px;
   align-items: center;
   justify-content: space-between;
   transition: padding 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1814,6 +1816,8 @@ p {
   color: var(--primary);
   text-shadow: 0 0 12px var(--primary-glow);
   letter-spacing: 1px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .burn-msg {
@@ -2200,6 +2204,8 @@ p {
   padding: 10px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   justify-content: space-between;
   align-items: center;
 }
@@ -2209,6 +2215,7 @@ p {
   font-size: 11px;
   color: #a1a1aa;
   letter-spacing: 1px;
+  min-width: 0;
 }
 
 .blink-text {
@@ -2280,6 +2287,8 @@ p {
 
 .pct-bar-wrapper {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   justify-content: space-between;
   align-items: baseline;
 }
@@ -2342,6 +2351,8 @@ p {
 
 .param-row {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 2px;
   justify-content: space-between;
   align-items: center;
 }
@@ -2638,6 +2649,8 @@ p {
   padding-bottom: 4px;
   font-weight: 700;
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   justify-content: space-between;
   align-items: center;
 }
@@ -2717,6 +2730,7 @@ p {
 /* "Playing" state (beat is currently playing) */
 #hud-beat-toggle {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3428,6 +3442,8 @@ textarea,
 }
 .analytics-header {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3438,9 +3454,12 @@ textarea,
   padding-bottom: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   text-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
+  min-width: 0;
 }
 .analytics-hud-row {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   justify-content: space-between;
   align-items: center;
   background: rgba(15, 15, 25, 0.85);
@@ -3454,8 +3473,10 @@ textarea,
 }
 .analytics-hud-row .hud-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
+  min-width: 0;
 }
 .analytics-hud-row .hud-label {
   color: #888899;
@@ -3487,6 +3508,8 @@ textarea,
 }
 .analytics-footer {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 2px;
   justify-content: space-between;
   font-size: 9.5px;
   font-weight: 700;
@@ -3843,6 +3866,8 @@ textarea,
 }
 .radar-row {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 2px;
   justify-content: space-between;
   align-items: center;
 }
