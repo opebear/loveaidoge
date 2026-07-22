@@ -29,7 +29,7 @@ export default function NotFound() {
         </h2>
         <p style={{ color: "#a1a1aa", fontSize: "14px", lineHeight: "1.6" }}>
           The requested memory coordinates could not be retrieved. The sector
-          might have been permanently deflated.
+          might have been deflated.
         </p>
         <Link
           href="/"

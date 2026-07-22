@@ -163,6 +163,7 @@ export function initApp() {
     element: HTMLElement;
   }
   const activeParticles: Particle[] = [];
+  const MAX_PARTICLES = 45; // hard cap so rapid tapping on mobile can't pile up hundreds of DOM nodes
 
   function animateParticles() {
     if (activeParticles.length === 0) return;
@@ -195,8 +196,21 @@ export function initApp() {
   }
 
   function spawnParticles(x: number, y: number) {
-    const count = 5 + Math.floor(Math.random() * 6); // 5 to 10 particles
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    const count = isMobile
+      ? 3 + Math.floor(Math.random() * 3) // 3 to 5 particles on phones
+      : 5 + Math.floor(Math.random() * 6); // 5 to 10 particles on desktop
     const isFirstActive = activeParticles.length === 0;
+
+    // If a burst would push us over the cap, remove the oldest particles first
+    // instead of letting the DOM node count grow without limit.
+    const overflow = activeParticles.length + count - MAX_PARTICLES;
+    if (overflow > 0) {
+      const removed = activeParticles.splice(0, overflow);
+      for (const p of removed) {
+        p.element.remove();
+      }
+    }
 
     for (let i = 0; i < count; i++) {
       const el = document.createElement("div");
@@ -236,17 +250,16 @@ export function initApp() {
     }
   }
 
-  // Handle click events on window
-  bindGlobalOnce("particle-mousedown", window, "mousedown", (e) => {
+  // Handle press events on window.
+  // NOTE: we intentionally use a single "pointerdown" listener instead of
+  // separate "mousedown" + "touchstart" listeners. On touch devices the
+  // browser fires touchstart AND a synthetic mousedown for the same tap,
+  // which was doubling the particle burst and causing jank on mobile.
+  // pointerdown unifies mouse/touch/pen into one event, so each tap only
+  // spawns particles once.
+  bindGlobalOnce("particle-pointerdown", window, "pointerdown", (e) => {
     markUserGesture();
-    spawnParticles(e.clientX, e.clientY);
-  });
-
-  bindGlobalOnce("particle-touchstart", window, "touchstart", (e) => {
-    markUserGesture();
-    if (e.touches && e.touches.length > 0) {
-      spawnParticles(e.touches[0].clientX, e.touches[0].clientY);
-    }
+    spawnParticles((e as PointerEvent).clientX, (e as PointerEvent).clientY);
   });
 
   // A real gesture can also be a keypress, not just a click/tap

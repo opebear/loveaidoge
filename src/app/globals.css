@@ -1370,12 +1370,15 @@ p {
   padding: 10px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   justify-content: space-between;
   align-items: center;
   z-index: 5;
 }
 
 .viewer-header span {
+  min-width: 0;
   font-family:
     "Fira Code", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, monospace;
@@ -1533,6 +1536,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .chip-btn:hover {
@@ -1560,6 +1564,8 @@ p {
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* Right Column: Memorial Altar */
