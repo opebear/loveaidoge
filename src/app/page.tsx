@@ -71,7 +71,7 @@ const TIMELINE_NODES: TimelineNode[] = [
     title: "COMMUNITY TAKEOVER ERA",
     logCode: "LOG_CODE: COMMUNITY_CTO",
     heading: "Community Takeover Era",
-    desc: "Year 2026. The original founding team fully transferred governance authority to the community. Loyal holders took direct charge, restructuring AIDOGE into an immortal, decentralized cultural monument on Arbitrum.",
+    desc: "Year 2024. The original founding team fully transferred governance authority to the community. Loyal holders took direct charge, restructuring AIDOGE into an immortal, decentralized cultural monument on Arbitrum.",
     meta: "CTO PHASE: ACTIVE | NETWORK: IMMUTABLE",
   },
 ];

@@ -116,6 +116,13 @@ function safeInit(action: string, fn: () => void) {
     console.warn(`Could not ${action}:`, err);
   }
 }
+
+// Shared "highlight the clicked button, clear the rest of the group" pattern
+// used by both the CEX/DEX market tabs and the Archive Viewer chip-tabs.
+function setActiveButton(group: NodeListOf<Element>, active: Element) {
+  group.forEach((b) => b.classList.remove("active"));
+  active.classList.add("active");
+}
 export function cleanupApp() {
   while (cleanupFns.length) {
     const fn = cleanupFns.pop();
@@ -129,6 +136,9 @@ export function cleanupApp() {
 // --- On-chain token stats (Max Supply / Burned) — client-side, no server needed ---
 const TOKEN_ADDRESS = "0x09E18590E8f76b6Cf471b3cd75fE1A1a9D2B2c2b" as const;
 const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead" as const;
+// Fallback burned-count used before the first real on-chain fetch resolves
+// (or if it fails) — was previously duplicated as a magic number in 6 places.
+const FALLBACK_BURNED_COUNT = 22974464256141700n;
 
 const erc20Abi = [
   {
@@ -223,10 +233,10 @@ async function fetchAndRenderTokenStats() {
     const burnedAmount = Number(formatUnits(burned, decimals));
     const circulatingSupply = maxTotalSupply - burnedAmount;
 
-    // Luminous Burning Analytics widget's "TOTAL BURNED" (live-chart-burned-val
-    // / live-chart-burned-pct) reads window.aidogeRespectCount, so keep it in
-    // sync with the same real on-chain burned amount here too — same
-    // treatment as tribute-burn-val below, refreshed every 30s.
+    // burnedAmount (real on-chain burned total) drives 3 displays at once:
+    // Terminal's stat-burned, Memorial Altar's tribute-burn-val (both counted
+    // up below), and Luminous Analytics' window.aidogeRespectCount (read by
+    // its own animation loop) — all refreshed together every 30s.
     window.aidogeRespectCount = BigInt(Math.floor(burnedAmount));
 
     const supplyEl = document.getElementById("stat-max-supply");
@@ -235,9 +245,6 @@ async function fetchAndRenderTokenStats() {
     const burnedPctEl = document.getElementById("stat-burned-pct");
     const circulatingEl = document.getElementById("stat-circulating");
     const circulatingFullEl = document.getElementById("stat-circulating-full");
-    // Memorial Altar's "TOTAL TRIBUTARY BURN COUNT" — kept in sync with the
-    // same real on-chain burned amount used by the Terminal's stat-burned,
-    // instead of the old locally-simulated counter.
     const tributeBurnEl = document.getElementById("tribute-burn-val");
     const full = (n: number) => n.toLocaleString();
 
@@ -247,24 +254,19 @@ async function fetchAndRenderTokenStats() {
       if (supplyFullEl) supplyFullEl.textContent = full(maxTotalSupply);
     }
 
-    if (burnedEl) {
-      animateCountUp(
-        burnedEl,
-        lastBurnedValue,
-        burnedAmount,
-        800,
-        formatCompactSupply,
-      );
-      burnedEl.title = full(burnedAmount);
-    }
+    // Same count-up animation, same from/to values — only the target element
+    // and number format differ, so loop instead of repeating the call twice.
+    (
+      [
+        [burnedEl, formatCompactSupply],
+        [tributeBurnEl, (n: number) => full(Math.floor(n))],
+      ] as const
+    ).forEach(([el, format]) => {
+      if (el) animateCountUp(el, lastBurnedValue, burnedAmount, 800, format);
+    });
+    if (burnedEl) burnedEl.title = full(burnedAmount);
 
-    if (tributeBurnEl) {
-      animateCountUp(tributeBurnEl, lastBurnedValue, burnedAmount, 800, (n) =>
-        full(Math.floor(n)),
-      );
-    }
-
-    // Both burnedEl and tributeBurnEl animate FROM the same previous value,
+    // burnedEl and tributeBurnEl both animate FROM the same previous value,
     // so only update it once, after both have read it.
     lastBurnedValue = burnedAmount;
 
@@ -511,10 +513,8 @@ export function initApp() {
       btn.addEventListener("click", () => {
         const targetTab = btn.getAttribute("data-tab");
 
-        tabBtns.forEach((b) => b.classList.remove("active"));
         tabContents.forEach((c) => c.classList.remove("active"));
-
-        btn.classList.add("active");
+        setActiveButton(tabBtns, btn);
         const activeContent = document.getElementById(`tab-${targetTab}`);
         if (activeContent) activeContent.classList.add("active");
       });
@@ -2004,8 +2004,7 @@ function initMemorialBoard() {
       if (!data) return;
 
       // Update active state
-      chipBtns.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
+      setActiveButton(chipBtns, btn);
 
       // Audio feedback
       playQuantumBeep(data.freq, "sine", 0.25, 0.12);
@@ -2039,23 +2038,14 @@ function initMemorialBoard() {
   const burnValEl = document.getElementById("tribute-burn-val");
   const burnTickerEl = document.getElementById("burn-ticker");
 
-  // Load persistence respects count
-  let respectCount: bigint;
-  try {
-    const saved = localStorage.getItem("aidoge_respects_burned_v2");
-    respectCount = saved ? BigInt(saved) : BigInt("22974464256141700");
-  } catch {
-    respectCount = BigInt("22974464256141700");
-  }
-  if (respectCount < BigInt("22974464256141700")) {
-    respectCount = BigInt("22974464256141700");
-  }
-
-  // Set global variable for chart synchronization
-  window.aidogeRespectCount = respectCount;
-
+  // Virtual burns are a temporary display bump only — the real on-chain
+  // amount (window.aidogeRespectCount, kept fresh by fetchAndRenderTokenStats
+  // every 30s) is always the source of truth, so there's nothing to persist
+  // across visits. No localStorage, no separately-tracked running total.
   if (burnValEl) {
-    burnValEl.textContent = respectCount.toLocaleString();
+    burnValEl.textContent = (
+      window.aidogeRespectCount || FALLBACK_BURNED_COUNT
+    ).toLocaleString();
   }
 
   const burnSlogans = [
@@ -2075,9 +2065,12 @@ function initMemorialBoard() {
     const increment = BigInt(
       Math.floor(Math.random() * 4000000000000) + 1000000000000,
     ); // 1T to 5T tokens
-    respectCount += increment;
-    window.aidogeRespectCount = respectCount;
-    localStorage.setItem("aidoge_respects_burned_v2", respectCount.toString());
+    // Bump on top of whatever the real on-chain figure currently is — this
+    // is purely a temporary display effect; the next 30s refresh in
+    // fetchAndRenderTokenStats always resets it back to the real amount.
+    const displayCount =
+      (window.aidogeRespectCount || FALLBACK_BURNED_COUNT) + increment;
+    window.aidogeRespectCount = displayCount;
 
     // Audio Feedback
     playBurnSound();
@@ -2087,7 +2080,7 @@ function initMemorialBoard() {
 
     // Update Counter with pop effect
     if (burnValEl) {
-      burnValEl.textContent = respectCount.toLocaleString();
+      burnValEl.textContent = displayCount.toLocaleString();
       burnValEl.style.transform = "scale(1.08)";
       burnValEl.style.color = "var(--secondary)";
       setTimeout(() => {
@@ -3905,14 +3898,18 @@ function initLuminousAnalytics() {
 
   let buyPressure = 0;
   let particles: ChartParticle[] = [];
+  // Tracks the real on-screen position of the glowing white endpoint node,
+  // updated every frame in drawChart() so burst particles always originate
+  // from where the dot actually is (not a hardcoded guess).
+  let currentEndpoint = { x: width - 10, y: height * 0.35 };
 
   // Get current burn count in Quadrillions from the global BigInt
   const getRespectsNum = () => {
-    const currentBig = window.aidogeRespectCount || 22974464256141700n;
+    const currentBig = window.aidogeRespectCount || FALLBACK_BURNED_COUNT;
     return Number(currentBig) / 1e15; // e.g. 22.9744...
   };
 
-  const initialBig = window.aidogeRespectCount || 22974464256141700n;
+  const initialBig = window.aidogeRespectCount || FALLBACK_BURNED_COUNT;
   let smoothedRespects = Number(initialBig) / 1e15;
 
   // Initialize sliding window of 18 points representing recent burn history
@@ -3973,8 +3970,8 @@ function initLuminousAnalytics() {
     // Spawn rich glowing cyber particles shooting off the current value point
     for (let i = 0; i < 5; i++) {
       particles.push({
-        x: width - 15,
-        y: height * 0.35, // starting coordinate, will align beautifully
+        x: currentEndpoint.x,
+        y: currentEndpoint.y, // real position of the white endpoint dot
         vx: -Math.random() * 4.0 - 1.5,
         vy: (Math.random() - 0.5) * 5.0,
         size: Math.random() * 3 + 1.5,
@@ -4012,7 +4009,7 @@ function initLuminousAnalytics() {
       buyPressure *= 0.94;
     }
 
-    const currentBig = window.aidogeRespectCount || 22974464256141700n;
+    const currentBig = window.aidogeRespectCount || FALLBACK_BURNED_COUNT;
     const respectsNum = getRespectsNum();
 
     // LERP to smooth the numeric displayed value
@@ -4140,6 +4137,7 @@ function initLuminousAnalytics() {
 
     // 4. Update and Render Particle Sparks (Ember Flow)
     const lastP = points[points.length - 1];
+    currentEndpoint = lastP; // keep burst-spawn position in sync with the real dot
 
     // Ambient micro-ember release from the live endpoint
     if (Math.random() < 0.05) {
