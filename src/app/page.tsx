@@ -4,10 +4,242 @@ import React from "react";
 import Image from "next/image";
 import { withBasePath } from "./lib/basePath";
 
+interface ChipTab {
+  key: string;
+  archive: string;
+  num: string;
+  name: string;
+}
+
+const CHIP_TABS: ChipTab[] = [
+  { key: "genesis", archive: "genesis", num: "01", name: "GENESIS AIRDROP" },
+  { key: "lucky", archive: "lucky", num: "02", name: "LUCKY DROP" },
+  { key: "aicode", archive: "aicode", num: "03", name: "AICODE ENGINE" },
+  { key: "nfts", archive: "nfts", num: "04", name: "TRUTH NFTS" },
+];
+
+interface TimelineNode {
+  key: string;
+  date: string;
+  title: string;
+  logCode: string;
+  heading: string;
+  desc: string;
+  meta: string;
+}
+
+const TIMELINE_NODES: TimelineNode[] = [
+  {
+    key: "genesis-airdrop",
+    date: "2023-04-15",
+    title: "THE GENESIS DISTRIBUTOR",
+    logCode: "LOG_CODE: GENESIS_AIRDROP",
+    heading: "The Miracle Genesis (Airdrop)",
+    desc: "April 2023. Launched with a 100% fair and free distribution model. Over 400,000 eligible Arbitrum wallet addresses successfully claimed their rewards, triggering an unprecedented wave of hyper-growth across the ecosystem.",
+    meta: "ALLOCATION: 100% COMMUNITYDROP | RECIPIENTS: 400K+ WALLETS",
+  },
+  {
+    key: "lucky-drop",
+    date: "2023-05-01",
+    title: "LUCKY DROP DEPLOYMENT",
+    logCode: "LOG_CODE: LUCKY_DROP",
+    heading: "Lucky Drop Incentive Protocol",
+    desc: "May 2023. The protocol automatically routing a 3% transaction tax directly into an on-chain randomized reward pool, distributing over 38.2 million ARB tokens as community rewards.",
+    meta: "REWARDS: 38.2M+ ARB | ON-CHAIN RNG",
+  },
+  {
+    key: "aidode-burn",
+    date: "2023-05-18",
+    title: "AIDODE DEFLATION PROTOCOL",
+    logCode: "LOG_CODE: AIDODE_BURN",
+    heading: "AIDODE Hyper-Deflation",
+    desc: "May 2023. Integrated the utility token AICODE. Users can acquire it exclusively by burning or locking $AIDOGE, initiating a massive hyper-deflationary loop that permanently destroyed over 22.97T AIDOGE.",
+    meta: "BURNED: 22.97T+ | SCARCITY: EXTREME",
+  },
+  {
+    key: "truth-nfts",
+    date: "2023-06-10",
+    title: "TRUTH NFT SERIES",
+    logCode: "LOG_CODE: TRUTH_NFTS",
+    heading: "Truth NFT Series Launch",
+    desc: "June 2023. Released a premium collection of 10,000 unique cybernetic Doge artworks. The entire series sold out in seconds, unlocking exclusive early-access privileges and strategic staking rewards.",
+    meta: "ITEMS: 10,000 | STATUS: SOLD OUT",
+  },
+  {
+    key: "community-cto",
+    date: "2024-11-24",
+    title: "COMMUNITY TAKEOVER ERA",
+    logCode: "LOG_CODE: COMMUNITY_CTO",
+    heading: "Community Takeover Era",
+    desc: "Year 2026. The original founding team fully transferred governance authority to the community. Loyal holders took direct charge, restructuring AIDOGE into an immortal, decentralized cultural monument on Arbitrum.",
+    meta: "CTO PHASE: ACTIVE | NETWORK: IMMUTABLE",
+  },
+];
+
+interface OnchainStat {
+  key: string;
+  label: string;
+  valueId: string;
+  subId: string;
+}
+
+const ONCHAIN_STATS: OnchainStat[] = [
+  {
+    key: "max-supply",
+    label: "MAX TOTAL SUPPLY",
+    valueId: "stat-max-supply",
+    subId: "stat-max-supply-full",
+  },
+  {
+    key: "burned",
+    label: "BURNED (DEAD WALLET)",
+    valueId: "stat-burned",
+    subId: "stat-burned-pct",
+  },
+  {
+    key: "circulating",
+    label: "CIRCULATING SUPPLY",
+    valueId: "stat-circulating",
+    subId: "stat-circulating-full",
+  },
+];
+
+interface MarketListing {
+  key: string;
+  exchange: string;
+  pair: string;
+  href: string;
+  actionLabel: string;
+  actionClassName: string;
+  exchangeColor: string;
+}
+
+const CEX_LISTINGS: MarketListing[] = [
+  {
+    key: "gateio",
+    exchange: "Gate.io",
+    pair: "AIDOGE/USDT",
+    href: "https://www.gate.io/trade/AIDOGE_USDT",
+    actionLabel: "TRADE \u2197",
+    actionClassName: "table-action-btn",
+    exchangeColor: "#ff2a5f",
+  },
+  {
+    key: "mexc",
+    exchange: "MEXC",
+    pair: "AIDOGE/USDT",
+    href: "https://www.mexc.com/exchange/AIDOGE_USDT",
+    actionLabel: "TRADE \u2197",
+    actionClassName: "table-action-btn",
+    exchangeColor: "#ff2a5f",
+  },
+  {
+    key: "bitmart",
+    exchange: "BitMart",
+    pair: "AIDOGE/USDT",
+    href: "https://www.bitmart.com/trade/en-US?symbol=AIDOGE_USDT",
+    actionLabel: "TRADE \u2197",
+    actionClassName: "table-action-btn",
+    exchangeColor: "#ff2a5f",
+  },
+  {
+    key: "coinex",
+    exchange: "CoinEx",
+    pair: "AIDOGE/USDT",
+    href: "https://www.coinex.com/en/exchange/aidoge-usdt",
+    actionLabel: "TRADE \u2197",
+    actionClassName: "table-action-btn",
+    exchangeColor: "#ff2a5f",
+  },
+];
+
+const DEX_POOLS: MarketListing[] = [
+  {
+    key: "camelot-v3",
+    exchange: "CAMELOT V3",
+    pair: "AIDOGE/WETH",
+    href: "https://app.camelot.exchange/",
+    actionLabel: "SWAP \u2197",
+    actionClassName: "table-action-btn dex-action",
+    exchangeColor: "#00f0ff",
+  },
+  {
+    key: "camelot-v2",
+    exchange: "CAMELOT V2",
+    pair: "AIDOGE/USDT",
+    href: "https://app.camelot.exchange/",
+    actionLabel: "SWAP \u2197",
+    actionClassName: "table-action-btn dex-action",
+    exchangeColor: "#00f0ff",
+  },
+  {
+    key: "uniswap-v3",
+    exchange: "UNISWAP V3",
+    pair: "AIDOGE/WETH",
+    href: "https://app.uniswap.org/",
+    actionLabel: "SWAP \u2197",
+    actionClassName: "table-action-btn dex-action",
+    exchangeColor: "#00f0ff",
+  },
+];
+
+interface TaxLegendItem {
+  key: string;
+  index: number;
+  color: string;
+  name: string;
+  value: string;
+}
+
+const TAX_LEGEND_ITEMS: TaxLegendItem[] = [
+  {
+    key: "burn",
+    index: 0,
+    color: "#ff5f1f",
+    name: "System Burn",
+    value: "1.0%",
+  },
+  {
+    key: "stakers",
+    index: 1,
+    color: "#9933ff",
+    name: "AIDOGE Stakers",
+    value: "0.7%",
+  },
+  {
+    key: "lucky",
+    index: 2,
+    color: "#ffcc00",
+    name: "Lucky Drop",
+    value: "3.0%",
+  },
+  {
+    key: "camelot-lp",
+    index: 3,
+    color: "#00ffff",
+    name: "Camelot LP",
+    value: "1.0%",
+  },
+  {
+    key: "flex-funds",
+    index: 4,
+    color: "#00cc44",
+    name: "Flexible Funds",
+    value: "0.8%",
+  },
+  {
+    key: "dev",
+    index: 5,
+    color: "#0066ff",
+    name: "Development",
+    value: "1.5%",
+  },
+];
+
 export default function Home() {
   return (
     <>
-      <p>Never Go Back To My Old Life!</p>
+      <p className="page-intro-label">Never Go Back To My Old Life!</p>
       <div className="box1-home" id="memorial-board">
         <div className="memorial-overlay">
           {/* Memorial Title */}
@@ -84,22 +316,16 @@ export default function Home() {
 
               {/* Tab Buttons under the viewer, designed like futuristic system chips */}
               <div className="chip-tabs">
-                <button className="chip-btn" data-archive="genesis">
-                  <span className="chip-num font-mono">01</span>
-                  <span className="chip-name">GENESIS AIRDROP</span>
-                </button>
-                <button className="chip-btn" data-archive="lucky">
-                  <span className="chip-num font-mono">02</span>
-                  <span className="chip-name">LUCKY DROP</span>
-                </button>
-                <button className="chip-btn" data-archive="aicode">
-                  <span className="chip-num font-mono">03</span>
-                  <span className="chip-name">AICODE ENGINE</span>
-                </button>
-                <button className="chip-btn" data-archive="nfts">
-                  <span className="chip-num font-mono">04</span>
-                  <span className="chip-name">TRUTH NFTS</span>
-                </button>
+                {CHIP_TABS.map((chip) => (
+                  <button
+                    key={chip.key}
+                    className="chip-btn"
+                    data-archive={chip.archive}
+                  >
+                    <span className="chip-num font-mono">{chip.num}</span>
+                    <span className="chip-name">{chip.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -254,145 +480,28 @@ export default function Home() {
           <div className="holographic-timeline-wrapper">
             <div className="timeline-glowing-axis"></div>
 
-            <div
-              className="timeline-node-item scroll-reveal-node"
-              data-date="2023-04-15"
-              data-title="THE GENESIS DISTRIBUTOR"
-            >
-              <div className="node-bullet-glow">
-                <div className="node-ripple"></div>
-              </div>
-              <div className="node-card">
-                <div className="node-glitch-header font-mono">
-                  LOG_CODE: GENESIS_AIRDROP
+            {TIMELINE_NODES.map((node) => (
+              <div
+                key={node.key}
+                className="timeline-node-item scroll-reveal-node"
+                data-date={node.date}
+                data-title={node.title}
+              >
+                <div className="node-bullet-glow">
+                  <div className="node-ripple"></div>
                 </div>
-                <h4 className="node-title">The Miracle Genesis (Airdrop)</h4>
-                <p
-                  className="node-desc"
-                  data-text="April 2023. Launched with a 100% fair and free distribution model. Over 400,000 eligible Arbitrum wallet addresses successfully claimed their rewards, triggering an unprecedented wave of hyper-growth across the ecosystem."
-                >
-                  April 2023. Launched with a 100% fair and free distribution
-                  model. Over 400,000 eligible Arbitrum wallet addresses
-                  successfully claimed their rewards, triggering an
-                  unprecedented wave of hyper-growth across the ecosystem.
-                </p>
-                <div className="node-meta font-mono">
-                  ALLOCATION: 100% COMMUNITYDROP | RECIPIENTS: 400K+ WALLETS
+                <div className="node-card">
+                  <div className="node-glitch-header font-mono">
+                    {node.logCode}
+                  </div>
+                  <h4 className="node-title">{node.heading}</h4>
+                  <p className="node-desc" data-text={node.desc}>
+                    {node.desc}
+                  </p>
+                  <div className="node-meta font-mono">{node.meta}</div>
                 </div>
               </div>
-            </div>
-
-            <div
-              className="timeline-node-item scroll-reveal-node"
-              data-date="2023-05-01"
-              data-title="LUCKY DROP DEPLOYMENT"
-            >
-              <div className="node-bullet-glow">
-                <div className="node-ripple"></div>
-              </div>
-              <div className="node-card">
-                <div className="node-glitch-header font-mono">
-                  LOG_CODE: LUCKY_DROP
-                </div>
-                <h4 className="node-title">Lucky Drop Incentive Protocol</h4>
-                <p
-                  className="node-desc"
-                  data-text="May 2023. The protocol automatically routing a 3% transaction tax directly into an on-chain randomized reward pool, distributing over 38.2 million ARB tokens as community rewards."
-                >
-                  May 2023. The protocol automatically routing a 3% transaction
-                  tax directly into an on-chain randomized reward pool,
-                  distributing over 38.2 million ARB tokens as community
-                  rewards.
-                </p>
-                <div className="node-meta font-mono">
-                  REWARDS: 38.2M+ ARB | ON-CHAIN RNG
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="timeline-node-item scroll-reveal-node"
-              data-date="2023-05-18"
-              data-title="AICODE DEFLATION PROTOCOL"
-            >
-              <div className="node-bullet-glow">
-                <div className="node-ripple"></div>
-              </div>
-              <div className="node-card">
-                <div className="node-glitch-header font-mono">
-                  LOG_CODE: AICODE_BURN
-                </div>
-                <h4 className="node-title">AICODE Hyper-Deflation</h4>
-                <p
-                  className="node-desc"
-                  data-text="May 2023. Integrated the utility token AICODE. Users can acquire it exclusively by burning or locking $AIDOGE, initiating a massive hyper-deflationary loop that permanently destroyed over 22.97T AIDOGE."
-                >
-                  May 2023. Integrated the utility token AICODE. Users can
-                  acquire it exclusively by burning or locking $AIDOGE,
-                  initiating a massive hyper-deflationary loop that permanently
-                  destroyed over 22.97T AIDOGE.
-                </p>
-                <div className="node-meta font-mono">
-                  BURNED: 22.97T+ | SCARCITY: EXTREME
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="timeline-node-item scroll-reveal-node"
-              data-date="2023-06-10"
-              data-title="TRUTH NFT SERIES"
-            >
-              <div className="node-bullet-glow">
-                <div className="node-ripple"></div>
-              </div>
-              <div className="node-card">
-                <div className="node-glitch-header font-mono">
-                  LOG_CODE: TRUTH_NFTS
-                </div>
-                <h4 className="node-title">Truth NFT Series Launch</h4>
-                <p
-                  className="node-desc"
-                  data-text="June 2023. Released a premium collection of 10,000 unique cybernetic Doge artworks. The entire series sold out in seconds, unlocking exclusive early-access privileges and strategic staking rewards."
-                >
-                  June 2023. Released a premium collection of 10,000 unique
-                  cybernetic Doge artworks. The entire series sold out in
-                  seconds, unlocking exclusive early-access privileges and
-                  strategic staking rewards.
-                </p>
-                <div className="node-meta font-mono">
-                  ITEMS: 10,000 | STATUS: SOLD OUT
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="timeline-node-item scroll-reveal-node"
-              data-date="2024-11-24"
-              data-title="COMMUNITY TAKEOVER ERA"
-            >
-              <div className="node-bullet-glow">
-                <div className="node-ripple"></div>
-              </div>
-              <div className="node-card">
-                <div className="node-glitch-header font-mono">
-                  LOG_CODE: COMMUNITY_CTO
-                </div>
-                <h4 className="node-title">Community Takeover Era</h4>
-                <p
-                  className="node-desc"
-                  data-text="Year 2026. The original founding team fully transferred governance authority to the community. Loyal holders took direct charge, restructuring AIDOGE into an immortal, decentralized cultural monument on Arbitrum."
-                >
-                  Year 2026. The original founding team fully transferred
-                  governance authority to the community. Loyal holders took
-                  direct charge, restructuring AIDOGE into an immortal,
-                  decentralized cultural monument on Arbitrum.
-                </p>
-                <div className="node-meta font-mono">
-                  CTO PHASE: ACTIVE | NETWORK: IMMUTABLE
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -430,7 +539,19 @@ export default function Home() {
               </div>
             </div>
           </div>
-
+          {/* Info AIDOGE Segment */}
+          <div className="onchain-stats-grid" id="onchain-stats">
+            {ONCHAIN_STATS.map((stat) => (
+              <div key={stat.key} className="stat-card mini">
+                <div className="stat-glow"></div>
+                <div className="stat-label">{stat.label}</div>
+                <div className="stat-value" id={stat.valueId}>
+                  —
+                </div>
+                <div className="stat-sub" id={stat.subId}></div>
+              </div>
+            ))}
+          </div>
           {/* Markets Segment */}
           <div className="markets-container">
             <div className="markets-header">
@@ -457,102 +578,35 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody id="cex-table-body">
-                    <tr>
-                      <td
-                        className="font-bold text-pink"
-                        style={{ color: "#ff2a5f", fontWeight: 700 }}
-                      >
-                        Gate.io
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/USDT
-                      </td>
-                      <td>
-                        <a
-                          href="https://www.gate.io/trade/AIDOGE_USDT"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn"
+                    {CEX_LISTINGS.map((listing) => (
+                      <tr key={listing.key}>
+                        <td
+                          className="font-bold text-pink"
+                          style={{
+                            color: listing.exchangeColor,
+                            fontWeight: 700,
+                          }}
                         >
-                          TRADE ↗
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="font-bold text-pink"
-                        style={{ color: "#ff2a5f", fontWeight: 700 }}
-                      >
-                        MEXC
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/USDT
-                      </td>
-                      <td>
-                        <a
-                          href="https://www.mexc.com/exchange/AIDOGE_USDT"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn"
+                          {listing.exchange}
+                        </td>
+                        <td
+                          className="font-mono text-gray-400"
+                          style={{ color: "#a1a1aa" }}
                         >
-                          TRADE ↗
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="font-bold text-pink"
-                        style={{ color: "#ff2a5f", fontWeight: 700 }}
-                      >
-                        BitMart
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/USDT
-                      </td>
-                      <td>
-                        <a
-                          href="https://www.bitmart.com/trade/en-US?symbol=AIDOGE_USDT"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn"
-                        >
-                          TRADE ↗
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="font-bold text-pink"
-                        style={{ color: "#ff2a5f", fontWeight: 700 }}
-                      >
-                        CoinEx
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/USDT
-                      </td>
-                      <td>
-                        <a
-                          href="https://www.coinex.com/en/exchange/aidoge-usdt"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn"
-                        >
-                          TRADE ↗
-                        </a>
-                      </td>
-                    </tr>
+                          {listing.pair}
+                        </td>
+                        <td>
+                          <a
+                            href={listing.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={listing.actionClassName}
+                          >
+                            {listing.actionLabel}
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -570,78 +624,35 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody id="dex-table-body">
-                    <tr>
-                      <td
-                        className="font-bold text-cyan"
-                        style={{ color: "#00f0ff", fontWeight: 700 }}
-                      >
-                        CAMELOT V3
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/WETH
-                      </td>
-                      <td>
-                        <a
-                          href="https://app.camelot.exchange/"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn dex-action"
+                    {DEX_POOLS.map((listing) => (
+                      <tr key={listing.key}>
+                        <td
+                          className="font-bold text-cyan"
+                          style={{
+                            color: listing.exchangeColor,
+                            fontWeight: 700,
+                          }}
                         >
-                          SWAP ↗
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="font-bold text-cyan"
-                        style={{ color: "#00f0ff", fontWeight: 700 }}
-                      >
-                        CAMELOT V2
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/USDT
-                      </td>
-                      <td>
-                        <a
-                          href="https://app.camelot.exchange/"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn dex-action"
+                          {listing.exchange}
+                        </td>
+                        <td
+                          className="font-mono text-gray-400"
+                          style={{ color: "#a1a1aa" }}
                         >
-                          SWAP ↗
-                        </a>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        className="font-bold text-cyan"
-                        style={{ color: "#00f0ff", fontWeight: 700 }}
-                      >
-                        UNISWAP V3
-                      </td>
-                      <td
-                        className="font-mono text-gray-400"
-                        style={{ color: "#a1a1aa" }}
-                      >
-                        AIDOGE/WETH
-                      </td>
-                      <td>
-                        <a
-                          href="https://app.uniswap.org/"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="table-action-btn dex-action"
-                        >
-                          SWAP ↗
-                        </a>
-                      </td>
-                    </tr>
+                          {listing.pair}
+                        </td>
+                        <td>
+                          <a
+                            href={listing.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={listing.actionClassName}
+                          >
+                            {listing.actionLabel}
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -902,108 +913,28 @@ export default function Home() {
 
               {/* Interactive Premium Grid Cards (Legend) */}
               <div className="legend-grid">
-                <div
-                  className="legend-card"
-                  data-index="0"
-                  style={{ "--accent-color": "#ff5f1f" } as React.CSSProperties}
-                >
+                {TAX_LEGEND_ITEMS.map((item) => (
                   <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#ff5f1f",
-                      boxShadow: "0 0 10px #ff5f1f",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">System Burn</span>
-                    <span className="legend-val font-mono">1.0%</span>
+                    key={item.key}
+                    className="legend-card"
+                    data-index={item.index}
+                    style={
+                      { "--accent-color": item.color } as React.CSSProperties
+                    }
+                  >
+                    <div
+                      className="legend-indicator"
+                      style={{
+                        backgroundColor: item.color,
+                        boxShadow: `0 0 10px ${item.color}`,
+                      }}
+                    ></div>
+                    <div className="legend-info">
+                      <span className="legend-name">{item.name}</span>
+                      <span className="legend-val font-mono">{item.value}</span>
+                    </div>
                   </div>
-                </div>
-                <div
-                  className="legend-card"
-                  data-index="1"
-                  style={{ "--accent-color": "#9933ff" } as React.CSSProperties}
-                >
-                  <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#9933ff",
-                      boxShadow: "0 0 10px #9933ff",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">AIDOGE Stakers</span>
-                    <span className="legend-val font-mono">0.7%</span>
-                  </div>
-                </div>
-                <div
-                  className="legend-card"
-                  data-index="2"
-                  style={{ "--accent-color": "#ffcc00" } as React.CSSProperties}
-                >
-                  <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#ffcc00",
-                      boxShadow: "0 0 10px #ffcc00",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">Lucky Drop</span>
-                    <span className="legend-val font-mono">3.0%</span>
-                  </div>
-                </div>
-                <div
-                  className="legend-card"
-                  data-index="3"
-                  style={{ "--accent-color": "#00ffff" } as React.CSSProperties}
-                >
-                  <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#00ffff",
-                      boxShadow: "0 0 10px #00ffff",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">Camelot LP</span>
-                    <span className="legend-val font-mono">1.0%</span>
-                  </div>
-                </div>
-                <div
-                  className="legend-card"
-                  data-index="4"
-                  style={{ "--accent-color": "#00cc44" } as React.CSSProperties}
-                >
-                  <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#00cc44",
-                      boxShadow: "0 0 10px #00cc44",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">Flexible Funds</span>
-                    <span className="legend-val font-mono">0.8%</span>
-                  </div>
-                </div>
-                <div
-                  className="legend-card"
-                  data-index="5"
-                  style={{ "--accent-color": "#0066ff" } as React.CSSProperties}
-                >
-                  <div
-                    className="legend-indicator"
-                    style={{
-                      backgroundColor: "#0066ff",
-                      boxShadow: "0 0 10px #0066ff",
-                    }}
-                  ></div>
-                  <div className="legend-info">
-                    <span className="legend-name">Development</span>
-                    <span className="legend-val font-mono">1.5%</span>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>

@@ -1,3 +1,6 @@
+import { createPublicClient, http, formatUnits } from "viem";
+import { arbitrum } from "viem/chains";
+
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext;
@@ -67,6 +70,14 @@ function isSoundMuted(): boolean {
   return sharedSoundMuted;
 }
 
+// Shared radar-visibility flag: same reasoning as `sharedSoundMuted` above —
+// the HUD radar widget itself lives in layout.tsx and persists across route
+// changes, but the settings panel toggle that controls it is destroyed and
+// rebuilt on every navigation (see initQuantumScrollEngine()), so this
+// module-level flag is the single source of truth for whether the radar is
+// currently hidden.
+let radarHidden = false;
+
 let sharedAudioCtx: AudioContext | null = null;
 function getSharedAudioContext(): AudioContext | null {
   if (!hasUserGesture()) return null;
@@ -92,6 +103,19 @@ const cleanupFns: Array<() => void> = [];
 function registerCleanup(fn: () => void) {
   cleanupFns.push(fn);
 }
+
+// Every optional visual/audio feature below is independent of the others,
+// so one feature throwing during init must never stop the rest from
+// running. This wraps that "try it, warn on failure, keep going" pattern
+// in one place instead of repeating the same try/catch/console.warn
+// boilerplate around every init*() call.
+function safeInit(action: string, fn: () => void) {
+  try {
+    fn();
+  } catch (err) {
+    console.warn(`Could not ${action}:`, err);
+  }
+}
 export function cleanupApp() {
   while (cleanupFns.length) {
     const fn = cleanupFns.pop();
@@ -102,7 +126,156 @@ export function cleanupApp() {
     }
   }
 }
+// --- On-chain token stats (Max Supply / Burned) — client-side, no server needed ---
+const TOKEN_ADDRESS = "0x09E18590E8f76b6Cf471b3cd75fE1A1a9D2B2c2b" as const;
+const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead" as const;
 
+const erc20Abi = [
+  {
+    name: "totalSupply",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    name: "decimals",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint8" }],
+  },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "a", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
+
+const publicClient = createPublicClient({
+  chain: arbitrum,
+  transport: http("https://arb1.arbitrum.io/rpc"),
+});
+
+// Track the last rendered "burned" value so we can animate the transition
+let lastBurnedValue = 0;
+
+// AIDOGE supply figures run into the hundreds of trillions, which as a raw
+// "210,000,000,000,000" string is too wide for the mobile stat cards and gets
+// clipped. Format big numbers compactly (e.g. "210T", "22.98T") for display,
+// and keep the exact figure in the element's `title` for hover/long-press.
+function formatCompactSupply(num: number): string {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+// Smoothly counts an element's displayed number from `from` to `to`.
+// `format` controls how the interpolated value is rendered (defaults to the
+// previous plain toLocaleString behavior).
+function animateCountUp(
+  el: HTMLElement,
+  from: number,
+  to: number,
+  duration = 800,
+  format: (n: number) => string = (n) => Math.floor(n).toLocaleString(),
+) {
+  const start = performance.now();
+  function tick(now: number) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    const current = from + (to - from) * eased;
+    el.textContent = format(current);
+    if (progress < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      el.textContent = format(to);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+async function fetchAndRenderTokenStats() {
+  try {
+    const [totalSupply, decimals, burned] = await Promise.all([
+      publicClient.readContract({
+        address: TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: "totalSupply",
+      }),
+      publicClient.readContract({
+        address: TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: "decimals",
+      }),
+      publicClient.readContract({
+        address: TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [DEAD_ADDRESS],
+      }),
+    ]);
+
+    const maxTotalSupply = Number(formatUnits(totalSupply, decimals));
+    const burnedAmount = Number(formatUnits(burned, decimals));
+    const circulatingSupply = maxTotalSupply - burnedAmount;
+
+    const supplyEl = document.getElementById("stat-max-supply");
+    const supplyFullEl = document.getElementById("stat-max-supply-full");
+    const burnedEl = document.getElementById("stat-burned");
+    const burnedPctEl = document.getElementById("stat-burned-pct");
+    const circulatingEl = document.getElementById("stat-circulating");
+    const circulatingFullEl = document.getElementById("stat-circulating-full");
+    // Memorial Altar's "TOTAL TRIBUTARY BURN COUNT" — kept in sync with the
+    // same real on-chain burned amount used by the Terminal's stat-burned,
+    // instead of the old locally-simulated counter.
+    const tributeBurnEl = document.getElementById("tribute-burn-val");
+    const full = (n: number) => n.toLocaleString();
+
+    if (supplyEl) {
+      supplyEl.textContent = formatCompactSupply(maxTotalSupply);
+      supplyEl.title = full(maxTotalSupply);
+      if (supplyFullEl) supplyFullEl.textContent = full(maxTotalSupply);
+    }
+
+    if (burnedEl) {
+      animateCountUp(
+        burnedEl,
+        lastBurnedValue,
+        burnedAmount,
+        800,
+        formatCompactSupply,
+      );
+      burnedEl.title = full(burnedAmount);
+    }
+
+    if (tributeBurnEl) {
+      animateCountUp(tributeBurnEl, lastBurnedValue, burnedAmount, 800, (n) =>
+        full(Math.floor(n)),
+      );
+    }
+
+    // Both burnedEl and tributeBurnEl animate FROM the same previous value,
+    // so only update it once, after both have read it.
+    lastBurnedValue = burnedAmount;
+
+    if (burnedPctEl && maxTotalSupply > 0) {
+      burnedPctEl.textContent = `${full(burnedAmount)} (${((burnedAmount / maxTotalSupply) * 100).toFixed(2)}%)`;
+    }
+
+    if (circulatingEl) {
+      circulatingEl.textContent = formatCompactSupply(circulatingSupply);
+      circulatingEl.title = full(circulatingSupply);
+      if (circulatingFullEl)
+        circulatingFullEl.textContent = full(circulatingSupply);
+    }
+  } catch (err) {
+    console.error("token-stats fetch failed", err);
+  }
+}
 export function initApp() {
   const navbar = document.getElementById("navbar");
 
@@ -163,7 +336,7 @@ export function initApp() {
     element: HTMLElement;
   }
   const activeParticles: Particle[] = [];
-  const MAX_PARTICLES = 45; // hard cap so rapid tapping on mobile can't pile up hundreds of DOM nodes
+  const MAX_PARTICLES = 15; // hard cap so rapid tapping on mobile can't pile up hundreds of DOM nodes
 
   function animateParticles() {
     if (activeParticles.length === 0) return;
@@ -199,7 +372,7 @@ export function initApp() {
     const isMobile = window.matchMedia("(max-width: 768px)").matches;
     const count = isMobile
       ? 3 + Math.floor(Math.random() * 3) // 3 to 5 particles on phones
-      : 5 + Math.floor(Math.random() * 6); // 5 to 10 particles on desktop
+      : 2 + Math.floor(Math.random() * 8); // 2 to 9 particles on desktop
     const isFirstActive = activeParticles.length === 0;
 
     // If a burst would push us over the cap, remove the oldest particles first
@@ -266,11 +439,7 @@ export function initApp() {
   bindGlobalOnce("mark-gesture-keydown", window, "keydown", markUserGesture);
 
   // Initialize WebGL Fluid Cursor background effect
-  try {
-    initFluidCursor();
-  } catch (err) {
-    console.warn("Could not load fluid cursor:", err);
-  }
+  safeInit("load fluid cursor", initFluidCursor);
 
   // --- AIDOGE Live Terminal Dashboard Logic ---
   const terminalContainer = document.querySelector(".terminal-container");
@@ -325,8 +494,11 @@ export function initApp() {
         }
       });
     }
-
-    // 2. Tab switching logic
+    // 2. On-chain stats (Max Supply / Holders / Burned)
+    fetchAndRenderTokenStats();
+    const tokenStatsIntervalId = setInterval(fetchAndRenderTokenStats, 30000);
+    registerCleanup(() => clearInterval(tokenStatsIntervalId));
+    // 3. Tab switching logic
     const tabBtns = document.querySelectorAll(".tab-btn");
     const tabContents = document.querySelectorAll(".tab-content");
     tabBtns.forEach((btn) => {
@@ -344,50 +516,20 @@ export function initApp() {
   }
 
   // 3. Memorial Board Initialization
-  try {
-    initMemorialBoard();
-  } catch (err) {
-    console.warn("Could not load memorial board:", err);
-  }
+  safeInit("load memorial board", initMemorialBoard);
 
   // 4. Quantum Scroll & HUD Engine Initialization
-  try {
-    initQuantumScrollEngine();
-  } catch (err) {
-    console.warn("Could not load quantum scroll engine:", err);
-  }
+  safeInit("load quantum scroll engine", initQuantumScrollEngine);
 
   // 4b. Merge Beat button + Sound mute button into one settings button on the INDEX panel
-  try {
-    initHudSettingsControls();
-  } catch (err) {
-    console.warn("Could not load HUD settings controls:", err);
-  }
+  safeInit("load HUD settings controls", initHudSettingsControls);
 
   // 5. Initialize Luxury Enhancements
-  try {
-    initCyberLoader();
-  } catch (err) {
-    console.warn("Could not initialize cyber loader:", err);
-  }
+  safeInit("initialize cyber loader", initCyberLoader);
+  safeInit("initialize synth player", initSynthPlayer);
+  safeInit("initialize spotlight/tilt effects", initLuxuryEffects);
+  safeInit("initialize background stardust", initCosmicStardust);
 
-  try {
-    initSynthPlayer();
-  } catch (err) {
-    console.warn("Could not initialize synth player:", err);
-  }
-
-  try {
-    initLuxuryEffects();
-  } catch (err) {
-    console.warn("Could not initialize spotlight/tilt effects:", err);
-  }
-
-  try {
-    initCosmicStardust();
-  } catch (err) {
-    console.warn("Could not initialize background stardust:", err);
-  }
   initAppSecondBlock();
 }
 
@@ -1703,48 +1845,14 @@ function initMemorialBoard() {
   // function runs. Here we only need to read the shared mute state via
   // isSoundMuted().
 
-  // Web Audio Synth Function (shares a single AudioContext across the page — see
-  // getSharedAudioContext() above)
-  function getAudioContext(): AudioContext | null {
-    return getSharedAudioContext();
-  }
-
-  function playTone(
-    freq: number,
-    type: OscillatorType = "sine",
-    duration = 0.3,
-    vol = 0.15,
-  ) {
-    if (isSoundMuted()) return;
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-
-      gain.gain.setValueAtTime(vol, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(
-        0.00001,
-        ctx.currentTime + duration,
-      );
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + duration);
-    } catch (err) {
-      console.warn("Audio synthesis error:", err);
-    }
-  }
+  // Tone playback reuses the shared playQuantumBeep() synth (same
+  // oscillator+gain implementation, single AudioContext) instead of a
+  // separate local duplicate.
 
   function playBurnSound() {
     if (isSoundMuted()) return;
     try {
-      const ctx = getAudioContext();
+      const ctx = getSharedAudioContext();
       if (!ctx) return;
       // Generate fire crackle white noise
       const bufferSize = ctx.sampleRate * 0.4; // 0.4 seconds
@@ -1791,7 +1899,7 @@ function initMemorialBoard() {
       osc.stop(ctx.currentTime + 0.35);
     } catch {
       // Fallback simple beep
-      playTone(150, "triangle", 0.4, 0.25);
+      playQuantumBeep(150, "triangle", 0.4, 0.25);
     }
   }
 
@@ -1894,10 +2002,10 @@ function initMemorialBoard() {
       btn.classList.add("active");
 
       // Audio feedback
-      playTone(data.freq, "sine", 0.25, 0.12);
+      playQuantumBeep(data.freq, "sine", 0.25, 0.12);
       // Spark/chime chord effect
       setTimeout(() => {
-        playTone(data.freq * 1.5, "triangle", 0.15, 0.05);
+        playQuantumBeep(data.freq * 1.5, "triangle", 0.15, 0.05);
       }, 80);
 
       // Retrieval status indicator
@@ -2404,9 +2512,12 @@ function initMemorialBoard() {
 
         // Custom sound feedback matching color frequencies
         const frequencies = [261.63, 293.66, 329.63, 349.23, 392.0, 440.0]; // high tech ascending chord scale
-        if (typeof playTone === "function") {
-          playTone(frequencies[index % frequencies.length], "sine", 0.08, 0.05);
-        }
+        playQuantumBeep(
+          frequencies[index % frequencies.length],
+          "sine",
+          0.08,
+          0.05,
+        );
       }
     };
 
@@ -2417,7 +2528,10 @@ function initMemorialBoard() {
         seg.element.style.filter = "none";
       });
 
-      legendCards.forEach((card) => card.classList.remove("active"));
+      legendCards.forEach((card) => {
+        card.classList.remove("active");
+        card.classList.remove("locked");
+      });
 
       // Restore total view in center
       if (centerPct) {
@@ -2468,8 +2582,7 @@ function initMemorialBoard() {
     const toggleLock = (index: number) => {
       if (lockedIndex === index) {
         lockedIndex = null;
-        legendCards.forEach((card) => card.classList.remove("locked"));
-        activateSegment(index);
+        resetSegments();
       } else {
         lockedIndex = index;
         legendCards.forEach((card, idx) => {
@@ -2524,7 +2637,6 @@ function initMemorialBoard() {
     const mbDocClickHandler = () => {
       if (lockedIndex !== null) {
         lockedIndex = null;
-        legendCards.forEach((card) => card.classList.remove("locked"));
         resetSegments();
       }
     };
@@ -2741,6 +2853,7 @@ function initQuantumScrollEngine() {
           <span class="beat-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
         </button>
         <button class="hud-settings-row" id="respects-sound-toggle" type="button">🔊 SFX ON</button>
+        <button class="hud-settings-row" id="hud-radar-toggle" type="button">📡 RADAR ON</button>
       </div>
       <div class="hud-section-list">
         ${sectionListHTML}
@@ -2934,11 +3047,12 @@ function initQuantumScrollEngine() {
   updateScrollProgress();
 }
 
-// --- Combined settings panel (Beat + Sound mute) on the INDEX panel ------
-// Merges 2 previously separate buttons (the "CYBER BEAT" button in the
-// navbar, and the sound mute button in the Memorial Board) into a single
-// gear button (⚙) placed right on the INDEX panel to keep things compact.
-// Clicking the gear opens a small panel with the 2 toggle rows. Only
+// --- Combined settings panel (Beat + Sound mute + Radar) on the INDEX panel ---
+// Merges the previously separate buttons (the "CYBER BEAT" button in the
+// navbar, the sound mute button in the Memorial Board, and — now — the HUD
+// radar visibility toggle) into a single gear button (⚙) placed right on
+// the INDEX panel to keep things compact.
+// Clicking the gear opens a small panel with the toggle rows. Only
 // exists on pages that have the INDEX panel (where initQuantumScrollEngine()
 // created #hud-settings-btn) — other pages (e.g. Community) don't have it,
 // so this function silently no-ops.
@@ -2971,7 +3085,7 @@ function initHudSettingsControls() {
   // variable (see isSoundMuted() near the top of the file), not the DOM,
   // because #respects-sound-toggle is a brand-new element every time this
   // function reruns on a route change. Every sound-playing function
-  // (playSpatialUISound, playQuantumBeep, playTone, playBurnSound) checks
+  // (playSpatialUISound, playQuantumBeep, playBurnSound) checks
   // isSoundMuted() to decide whether to play audio.
   const soundToggle = document.getElementById("respects-sound-toggle");
   if (soundToggle) {
@@ -2989,6 +3103,37 @@ function initHudSettingsControls() {
       if (!sharedSoundMuted) {
         playSpatialUISound("click"); // confirms sound is back on
       }
+    });
+  }
+
+  // Radar visibility toggle — same single-source-of-truth reasoning as the
+  // sound toggle above: `radarHidden` is the source of truth (not the DOM),
+  // since #hud-radar-toggle is a brand-new element every time this function
+  // reruns on a route change. The radar widget itself (#hud-radar) lives in
+  // layout.tsx and is NOT rebuilt on navigation, so we just re-sync its
+  // "radar-hidden" class here to match the current flag.
+  const radarToggle = document.getElementById("hud-radar-toggle");
+  if (radarToggle) {
+    const radarWidget = document.getElementById("hud-radar");
+
+    const syncRadarUI = () => {
+      radarToggle.classList.toggle("muted", radarHidden);
+      radarToggle.textContent = radarHidden ? "📡 RADAR OFF" : "📡 RADAR ON";
+      if (radarWidget) {
+        radarWidget.classList.toggle("radar-hidden", radarHidden);
+      }
+    };
+
+    // Reflect the actual current state on this newly-created button —
+    // otherwise it would always render as "on" regardless of what the user
+    // chose on a previous page.
+    syncRadarUI();
+
+    wireOnce(radarToggle, (e) => {
+      e.stopPropagation();
+      radarHidden = !radarHidden;
+      syncRadarUI();
+      playSpatialUISound("tab");
     });
   }
 }
@@ -3343,10 +3488,21 @@ function startSequencerLoop() {
   arpInterval = setInterval(runSeqStep, (60 / tempo) * 500);
 }
 
+// Shared "showcase card" selector used by both the 3D tilt/spotlight system
+// below and the solar shadow system further down — kept in one place so the
+// two effects can't drift out of sync with each other.
+const PREMIUM_CARD_SELECTOR =
+  ".altar-card, .viewer-screen, .social-card, .stat-card, .terminal-container, .tax-dashboard-container";
+
 // 3. 3D Parallax Tilt Effects and Cursor Spotlight Border Glows
 function initLuxuryEffects() {
+  // NOTE: .legend-card is intentionally excluded — it already has its own
+  // dedicated hover/pin highlight system tied to the tax ring (see
+  // activateSegment/toggleLock below), so layering the 3D tilt + mouse
+  // spotlight meant for large showcase cards on top of it caused hover
+  // alone to look fully "lit" and pinning to stack an extra glow on top.
   const targetEls = document.querySelectorAll<HTMLElement>(
-    ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container",
+    PREMIUM_CARD_SELECTOR,
   );
 
   targetEls.forEach((el) => {
@@ -3499,53 +3655,24 @@ function initCosmicStardust() {
 // --- SPECIAL PREMIUM UPGRADES INITIALIZATION BLOCK ---
 // ============================================================================
 function initAppSecondBlock() {
-  try {
-    initSpatialUISound();
-  } catch (err) {
-    console.warn("Could not load spatial sound design:", err);
-  }
-
-  try {
-    initQuantumCursor();
-  } catch (err) {
-    console.warn("Could not load quantum cursor:", err);
-  }
-
-  try {
-    initLuminousAnalytics();
-  } catch (err) {
-    console.warn("Could not load burning analytics chart:", err);
-  }
-
-  try {
-    initHolographicTimeline();
-  } catch (err) {
-    console.warn("Could not load holographic timeline:", err);
-  }
-
-  try {
-    initDynamicHUDAndShadows();
-  } catch (err) {
-    console.warn("Could not load dynamic HUD and shadow casting:", err);
-  }
+  safeInit("load spatial sound design", initSpatialUISound);
+  safeInit("load quantum cursor", initQuantumCursor);
+  safeInit("load burning analytics chart", initLuminousAnalytics);
+  safeInit("load holographic timeline", initHolographicTimeline);
+  safeInit("load dynamic HUD and shadow casting", initDynamicHUDAndShadows);
 }
 
 /* ============================================================================
    FEATURE 6: SPATIAL UI SOUND DESIGN (SOUND BACKBONE)
    ============================================================================ */
-function getSpatialAudioContext(): AudioContext | null {
-  // Reuse a single shared AudioContext for the whole page (see
-  // getSharedAudioContext() at the top of the file) instead of creating a
-  // separate third context.
-  return getSharedAudioContext();
-}
-
 // Helper to synthesize luxurious micro-interaction sound effects
 function playSpatialUISound(type: string) {
   if (isSoundMuted()) return;
 
   try {
-    const ctx = getSpatialAudioContext();
+    // Reuse the single shared AudioContext for the whole page instead of
+    // creating a separate one.
+    const ctx = getSharedAudioContext();
     if (!ctx) return;
     const now = ctx.currentTime;
 
@@ -3620,7 +3747,7 @@ function initSpatialUISound() {
   const attachSounds = () => {
     // Attach high-tech audio triggers to every meaningful interactive element on page
     const elements = document.querySelectorAll<HTMLElement>(
-      "button, .nav-link, .social-card-btn, .table-action-btn, .chip-btn, .legend-card",
+      "button, .nav-link, .table-action-btn, .chip-btn, .legend-card",
     );
     elements.forEach((el) => {
       // Guard to prevent multiple duplicate attachments
@@ -4185,8 +4312,9 @@ function initDynamicHUDAndShadows() {
     // Re-query every time instead of caching once when initApp() runs,
     // because these cards (.social-card, .terminal-container, ...) get
     // destroyed/recreated on page change.
+    // .legend-card excluded here too, same reason as initLuxuryEffects above.
     const cards = document.querySelectorAll<HTMLElement>(
-      ".altar-card, .viewer-screen, .social-card, .stat-card, .legend-card, .terminal-container, .tax-dashboard-container, .node-card",
+      `${PREMIUM_CARD_SELECTOR}, .node-card`,
     );
     cards.forEach((card) => {
       const rect = card.getBoundingClientRect();

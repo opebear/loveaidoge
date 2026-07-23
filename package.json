@@ -11,7 +11,8 @@
   "dependencies": {
     "next": "^15.5.20",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "viem": "^2.55.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
