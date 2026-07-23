@@ -223,6 +223,12 @@ async function fetchAndRenderTokenStats() {
     const burnedAmount = Number(formatUnits(burned, decimals));
     const circulatingSupply = maxTotalSupply - burnedAmount;
 
+    // Luminous Burning Analytics widget's "TOTAL BURNED" (live-chart-burned-val
+    // / live-chart-burned-pct) reads window.aidogeRespectCount, so keep it in
+    // sync with the same real on-chain burned amount here too — same
+    // treatment as tribute-burn-val below, refreshed every 30s.
+    window.aidogeRespectCount = BigInt(Math.floor(burnedAmount));
+
     const supplyEl = document.getElementById("stat-max-supply");
     const supplyFullEl = document.getElementById("stat-max-supply-full");
     const burnedEl = document.getElementById("stat-burned");
@@ -3965,7 +3971,7 @@ function initLuminousAnalytics() {
     chartHistoryPoints[chartHistoryPoints.length - 1] = rVal; // update latest base value instantly
 
     // Spawn rich glowing cyber particles shooting off the current value point
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 5; i++) {
       particles.push({
         x: width - 15,
         y: height * 0.35, // starting coordinate, will align beautifully
@@ -4136,7 +4142,7 @@ function initLuminousAnalytics() {
     const lastP = points[points.length - 1];
 
     // Ambient micro-ember release from the live endpoint
-    if (Math.random() < 0.25) {
+    if (Math.random() < 0.05) {
       particles.push({
         x: lastP.x,
         y: lastP.y,
