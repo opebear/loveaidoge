@@ -2,8 +2,34 @@ import "./globals.css";
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { Orbitron, Plus_Jakarta_Sans, Fira_Code } from "next/font/google";
 import ClientInit from "./ClientInit";
 import { withBasePath } from "./lib/basePath";
+
+// Same 3 families/weights the old @import in globals.css pulled from
+// Google Fonts, now fetched at build time and self-hosted — no runtime
+// request to fonts.googleapis.com/fonts.gstatic.com, no render-blocking
+// @import chain, and next/font matches fallback metrics to reduce layout
+// shift while the real font loads. Each exposes a CSS variable that
+// globals.css maps to --font-title / --font-body / var(--font-fira-code).
+const orbitron = Orbitron({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-orbitron",
+  display: "swap",
+});
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plus-jakarta-sans",
+  display: "swap",
+});
+const firaCode = Fira_Code({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-fira-code",
+  display: "swap",
+});
 
 export const metadata = {
   title: "AIDogeCTO.com",
@@ -95,6 +121,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      className={`${orbitron.variable} ${plusJakartaSans.variable} ${firaCode.variable}`}
       style={
         {
           "--home-bg-image": `url("${withBasePath("/img/aidoge_background.png")}")`,

@@ -236,6 +236,58 @@ const TAX_LEGEND_ITEMS: TaxLegendItem[] = [
   },
 ];
 
+function MarketTable({
+  headers,
+  bodyId,
+  listings,
+}: {
+  headers: [string, string, string];
+  bodyId: string;
+  listings: MarketListing[];
+}) {
+  return (
+    <div className="table-wrapper">
+      <table className="market-table">
+        <thead>
+          <tr>
+            <th>{headers[0]}</th>
+            <th>{headers[1]}</th>
+            <th>{headers[2]}</th>
+          </tr>
+        </thead>
+        <tbody id={bodyId}>
+          {listings.map((listing) => (
+            <tr key={listing.key}>
+              <td
+                className="font-bold"
+                style={{ color: listing.exchangeColor, fontWeight: 700 }}
+              >
+                {listing.exchange}
+              </td>
+              <td
+                className="font-mono text-gray-400"
+                style={{ color: "#a1a1aa" }}
+              >
+                {listing.pair}
+              </td>
+              <td>
+                <a
+                  href={listing.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={listing.actionClassName}
+                >
+                  {listing.actionLabel}
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Home() {
   return (
     <>
@@ -568,94 +620,20 @@ export default function Home() {
 
             {/* Tab Content: CEX */}
             <div className="tab-content active" id="tab-cex">
-              <div className="table-wrapper">
-                <table className="market-table">
-                  <thead>
-                    <tr>
-                      <th>EXCHANGE</th>
-                      <th>PAIR</th>
-                      <th>ACTION</th>
-                    </tr>
-                  </thead>
-                  <tbody id="cex-table-body">
-                    {CEX_LISTINGS.map((listing) => (
-                      <tr key={listing.key}>
-                        <td
-                          className="font-bold text-pink"
-                          style={{
-                            color: listing.exchangeColor,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {listing.exchange}
-                        </td>
-                        <td
-                          className="font-mono text-gray-400"
-                          style={{ color: "#a1a1aa" }}
-                        >
-                          {listing.pair}
-                        </td>
-                        <td>
-                          <a
-                            href={listing.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={listing.actionClassName}
-                          >
-                            {listing.actionLabel}
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <MarketTable
+                headers={["EXCHANGE", "PAIR", "ACTION"]}
+                bodyId="cex-table-body"
+                listings={CEX_LISTINGS}
+              />
             </div>
 
             {/* Tab Content: DEX */}
             <div className="tab-content" id="tab-dex">
-              <div className="table-wrapper">
-                <table className="market-table">
-                  <thead>
-                    <tr>
-                      <th>DEX PROTOCOL</th>
-                      <th>POOL PAIR</th>
-                      <th>ACTION</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dex-table-body">
-                    {DEX_POOLS.map((listing) => (
-                      <tr key={listing.key}>
-                        <td
-                          className="font-bold text-cyan"
-                          style={{
-                            color: listing.exchangeColor,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {listing.exchange}
-                        </td>
-                        <td
-                          className="font-mono text-gray-400"
-                          style={{ color: "#a1a1aa" }}
-                        >
-                          {listing.pair}
-                        </td>
-                        <td>
-                          <a
-                            href={listing.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={listing.actionClassName}
-                          >
-                            {listing.actionLabel}
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <MarketTable
+                headers={["DEX PROTOCOL", "POOL PAIR", "ACTION"]}
+                bodyId="dex-table-body"
+                listings={DEX_POOLS}
+              />
             </div>
           </div>
 

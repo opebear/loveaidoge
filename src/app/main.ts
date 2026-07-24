@@ -32,14 +32,77 @@ function bindGlobalOnce(
   target.addEventListener(type, handler as EventListenerOrEventListenerObject);
 }
 
-// --- Global "user gesture" tracker for the Web Audio Autoplay Policy -----------
-// Browsers only allow an AudioContext to start playing after a real user
-// gesture (click/keydown/touchstart) — mousemove, scroll, or an
-// IntersectionObserver/init function that auto-runs on page load don't
-// count. This flag is set exactly once, on the first real gesture; every
-// place that creates/resumes an AudioContext should check
-// `hasUserGesture()` first, to avoid the
-// "The AudioContext was not allowed to start... after a user gesture" warning.
+// --- Shared "F" key registry -----------------------------------------------
+// Multiple independent features (memorial respect-burn, analytics chart
+// burn-spike) each want the "F" shortcut. They used to each bind their own
+// raw `keydown` listener, which double-fired both effects at once whenever
+// both features' elements were present on the same page. Callers now push a
+// callback here instead, and a single listener (bound once, ever) runs every
+// registered callback per press.
+// The actual `bindGlobalOnce("global-f-key", window, ...)` call is made
+// lazily, inside onFKeyPress() below, instead of here at module top level.
+// Top-level code in this module runs the instant the module is evaluated —
+// including during Next.js server-side module evaluation, where `window`
+// doesn't exist yet. Every real caller of onFKeyPress() only ever runs from
+// inside an init*() function invoked by initApp() (client-side, via
+// ClientInit's useEffect), so by the time `window` is actually touched
+// we're guaranteed to be in the browser. bindGlobalOnce() itself is
+// idempotent (see boundGlobalListeners above), so calling it again on every
+// onFKeyPress() call after the first is a harmless no-op.
+type FKeyCallback = () => void;
+let fKeyCallbacks: FKeyCallback[] = [];
+function onFKeyPress(cb: FKeyCallback) {
+  fKeyCallbacks.push(cb);
+  registerCleanup(() => {
+    fKeyCallbacks = fKeyCallbacks.filter((f) => f !== cb);
+  });
+  bindGlobalOnce("global-f-key", window, "keydown", (e) => {
+    if (e.key !== "f" && e.key !== "F") return;
+    // Ignore if user is inside form inputs
+    if (
+      document.activeElement?.tagName === "INPUT" ||
+      document.activeElement?.tagName === "TEXTAREA"
+    )
+      return;
+    fKeyCallbacks.forEach((cb) => cb());
+  });
+}
+
+// --- Shared, rAF-throttled `scroll` registry --------------------------------
+// Several independent features (navbar shrink, scroll-progress bar, HUD
+// radar active-sector tracking) each want to react to `scroll`. They used to
+// each bind their own raw `scroll` listener, so a single scroll event (which
+// can fire dozens of times a second during fast/inertial scrolling) ran all
+// of them in full, immediately, uncoalesced — including two that call
+// getBoundingClientRect()/read scrollHeight, which can force layout. This
+// collapses them into one listener that queues at most one rAF callback per
+// frame and runs every registered handler inside it — the same pattern
+// already used for `mousemove` in initDynamicHUDAndShadows().
+// Same reasoning as onFKeyPress() above: the real bindGlobalOnce() call is
+// made lazily inside onWindowScroll() so `window` is only touched once a
+// caller actually runs client-side, never at module-evaluation time.
+type ScrollCallback = () => void;
+let scrollCallbacks: ScrollCallback[] = [];
+let scrollFrameQueued = false;
+function onWindowScroll(cb: ScrollCallback) {
+  scrollCallbacks.push(cb);
+  registerCleanup(() => {
+    scrollCallbacks = scrollCallbacks.filter((f) => f !== cb);
+  });
+  bindGlobalOnce("global-scroll", window, "scroll", () => {
+    if (!scrollFrameQueued) {
+      scrollFrameQueued = true;
+      requestAnimationFrame(() => {
+        scrollFrameQueued = false;
+        scrollCallbacks.forEach((cb) => cb());
+      });
+    }
+  });
+}
+
+// Tracks whether a real user gesture (click/keydown/touchstart) has
+// happened yet — AudioContext can't start before one. Check
+// hasUserGesture() before creating/resuming any AudioContext.
 let userHasInteracted = false;
 function markUserGesture() {
   userHasInteracted = true;
@@ -104,6 +167,44 @@ function registerCleanup(fn: () => void) {
   cleanupFns.push(fn);
 }
 
+// Shared helper for ambient canvas animations (stardust, ash particles,
+// analytics chart, etc). Each one used to hand-roll its own "keep calling
+// requestAnimationFrame forever, even while scrolled off-screen" loop —
+// wasting CPU/GPU on frames nobody sees. This watches `el` and reports
+// visibility changes so callers can pause drawing while off-screen and
+// seamlessly resume when it scrolls back into view.
+function pauseWhenOffscreen(
+  el: Element,
+  onVisibilityChange: (visible: boolean) => void,
+) {
+  const observer = new IntersectionObserver(
+    (entries) =>
+      entries.forEach((entry) => onVisibilityChange(entry.isIntersecting)),
+    { threshold: 0 },
+  );
+  observer.observe(el);
+  registerCleanup(() => observer.disconnect());
+}
+
+// Shared checks used to skip/soften purely-decorative effects (WebGL fluid
+// background, custom cursor reticle, particle trails) for users who asked
+// the OS/browser for less motion, and for touch devices that have no real
+// mouse cursor to decorate in the first place. Reading these once per
+// init() call is cheap; callers should still bail out early if either is
+// true instead of starting a rAF loop that will just sit there unused.
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  );
+}
+function isCoarsePointerDevice(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(pointer: coarse)").matches === true
+  );
+}
+
 // Every optional visual/audio feature below is independent of the others,
 // so one feature throwing during init must never stop the rest from
 // running. This wraps that "try it, warn on failure, keep going" pattern
@@ -122,6 +223,22 @@ function safeInit(action: string, fn: () => void) {
 function setActiveButton(group: NodeListOf<Element>, active: Element) {
   group.forEach((b) => b.classList.remove("active"));
   active.classList.add("active");
+}
+
+// Shared "click a button in a group -> mark it active, then run whatever is
+// unique to that tab/chip" wiring, used by the terminal tabs and the
+// Archive Viewer chip-tabs so neither has to repeat the
+// forEach/addEventListener/setActiveButton boilerplate.
+function bindTabGroup(
+  buttons: NodeListOf<Element>,
+  onSelect: (btn: Element) => void,
+) {
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setActiveButton(buttons, btn);
+      onSelect(btn);
+    });
+  });
 }
 export function cleanupApp() {
   while (cleanupFns.length) {
@@ -299,8 +416,8 @@ export function initApp() {
     // Check initial position on load
     checkScroll();
 
-    // Add scroll event listener
-    bindGlobalOnce("navbar-scroll", window, "scroll", checkScroll);
+    // Add scroll event listener (shared, rAF-throttled — see onWindowScroll)
+    onWindowScroll(checkScroll);
   }
 
   // Dynamic active navbar link highlighter based on current path
@@ -344,7 +461,7 @@ export function initApp() {
     element: HTMLElement;
   }
   const activeParticles: Particle[] = [];
-  const MAX_PARTICLES = 15; // hard cap so rapid tapping on mobile can't pile up hundreds of DOM nodes
+  const MAX_PARTICLES = 15; // caps DOM nodes when tapping rapidly on mobile
 
   function animateParticles() {
     if (activeParticles.length === 0) return;
@@ -383,8 +500,7 @@ export function initApp() {
       : 2 + Math.floor(Math.random() * 8); // 2 to 9 particles on desktop
     const isFirstActive = activeParticles.length === 0;
 
-    // If a burst would push us over the cap, remove the oldest particles first
-    // instead of letting the DOM node count grow without limit.
+    // Over the cap? Drop the oldest particles first instead of growing forever.
     const overflow = activeParticles.length + count - MAX_PARTICLES;
     if (overflow > 0) {
       const removed = activeParticles.splice(0, overflow);
@@ -431,13 +547,8 @@ export function initApp() {
     }
   }
 
-  // Handle press events on window.
-  // NOTE: we intentionally use a single "pointerdown" listener instead of
-  // separate "mousedown" + "touchstart" listeners. On touch devices the
-  // browser fires touchstart AND a synthetic mousedown for the same tap,
-  // which was doubling the particle burst and causing jank on mobile.
-  // pointerdown unifies mouse/touch/pen into one event, so each tap only
-  // spawns particles once.
+  // "pointerdown" (not separate mousedown/touchstart) so each tap fires once —
+  // touch devices send both events for one tap, which was doubling the burst.
   bindGlobalOnce("particle-pointerdown", window, "pointerdown", (e) => {
     markUserGesture();
     spawnParticles((e as PointerEvent).clientX, (e as PointerEvent).clientY);
@@ -504,20 +615,29 @@ export function initApp() {
     }
     // 2. On-chain stats (Max Supply / Holders / Burned)
     fetchAndRenderTokenStats();
-    const tokenStatsIntervalId = setInterval(fetchAndRenderTokenStats, 30000);
+    const tokenStatsIntervalId = setInterval(() => {
+      // Skip the RPC call while the tab isn't visible (background tab,
+      // minimized window) — no point burning requests on a screen no one
+      // is looking at. Refresh right away once it's visible again.
+      if (!document.hidden) fetchAndRenderTokenStats();
+    }, 30000);
     registerCleanup(() => clearInterval(tokenStatsIntervalId));
+    bindGlobalOnce(
+      "token-stats-visibility",
+      document,
+      "visibilitychange",
+      () => {
+        if (!document.hidden) fetchAndRenderTokenStats();
+      },
+    );
     // 3. Tab switching logic
     const tabBtns = document.querySelectorAll(".tab-btn");
     const tabContents = document.querySelectorAll(".tab-content");
-    tabBtns.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const targetTab = btn.getAttribute("data-tab");
-
-        tabContents.forEach((c) => c.classList.remove("active"));
-        setActiveButton(tabBtns, btn);
-        const activeContent = document.getElementById(`tab-${targetTab}`);
-        if (activeContent) activeContent.classList.add("active");
-      });
+    bindTabGroup(tabBtns, (btn) => {
+      const targetTab = btn.getAttribute("data-tab");
+      tabContents.forEach((c) => c.classList.remove("active"));
+      const activeContent = document.getElementById(`tab-${targetTab}`);
+      if (activeContent) activeContent.classList.add("active");
     });
   }
 
@@ -533,7 +653,7 @@ export function initApp() {
   // 5. Initialize Luxury Enhancements
   safeInit("initialize cyber loader", initCyberLoader);
   safeInit("initialize synth player", initSynthPlayer);
-  safeInit("initialize spotlight/tilt effects", initLuxuryEffects);
+  safeInit("initialize spotlight border overlays", initLuxuryEffects);
   safeInit("initialize background stardust", initCosmicStardust);
 
   initAppSecondBlock();
@@ -541,6 +661,11 @@ export function initApp() {
 
 function initFluidCursor() {
   if (document.getElementById("fluid")) return;
+  // Purely decorative, GPU-heavy WebGL background — skip it entirely for
+  // touch devices (no real pointer to paint with anyway) and for users who
+  // asked for reduced motion, instead of starting a simulation nobody
+  // benefits from.
+  if (isCoarsePointerDevice() || prefersReducedMotion()) return;
   const canvas = document.createElement("canvas");
   canvas.id = "fluid";
   document.body.appendChild(canvas);
@@ -1406,6 +1531,15 @@ function initFluidCursor() {
       requestAnimationFrame(update);
       return;
     }
+    // Nobody can see this canvas while the tab is backgrounded — skip the
+    // simulation step/render entirely and just keep the loop alive at
+    // whatever throttled rate the browser gives background tabs, instead of
+    // burning GPU/CPU on frames that are never painted.
+    if (document.hidden) {
+      lastUpdateTime = Date.now();
+      requestAnimationFrame(update);
+      return;
+    }
     updateColors(dt);
     applyInputs();
     step(dt);
@@ -1640,7 +1774,10 @@ function initFluidCursor() {
     }
   }
 
-  window.addEventListener("mousedown", (e) => {
+  // bindGlobalOnce instead of raw addEventListener: #fluid is only ever
+  // created once (guarded above), but this keeps it safe even if that
+  // guard is ever removed/changed, instead of relying solely on it.
+  bindGlobalOnce("fluid-mousedown", window, "mousedown", (e) => {
     const pointer = pointers[0];
     const posX = scaleByPixelRatio(e.clientX);
     const posY = scaleByPixelRatio(e.clientY);
@@ -1649,7 +1786,7 @@ function initFluidCursor() {
     startLoopIfNeeded();
   });
 
-  window.addEventListener("mousemove", (e) => {
+  bindGlobalOnce("fluid-mousemove", window, "mousemove", (e) => {
     const pointer = pointers[0];
     const posX = scaleByPixelRatio(e.clientX);
     const posY = scaleByPixelRatio(e.clientY);
@@ -1658,7 +1795,7 @@ function initFluidCursor() {
     startLoopIfNeeded();
   });
 
-  window.addEventListener("touchstart", (e) => {
+  bindGlobalOnce("fluid-touchstart", window, "touchstart", (e) => {
     const touches = e.targetTouches;
     const pointer = pointers[0];
     for (let i = 0; i < touches.length; i++) {
@@ -1669,22 +1806,18 @@ function initFluidCursor() {
     startLoopIfNeeded();
   });
 
-  window.addEventListener(
-    "touchmove",
-    (e) => {
-      const touches = e.targetTouches;
-      const pointer = pointers[0];
-      for (let i = 0; i < touches.length; i++) {
-        const posX = scaleByPixelRatio(touches[i].clientX);
-        const posY = scaleByPixelRatio(touches[i].clientY);
-        updatePointerMoveData(pointer, posX, posY, pointer.color);
-      }
-      startLoopIfNeeded();
-    },
-    false,
-  );
+  bindGlobalOnce("fluid-touchmove", window, "touchmove", (e) => {
+    const touches = e.targetTouches;
+    const pointer = pointers[0];
+    for (let i = 0; i < touches.length; i++) {
+      const posX = scaleByPixelRatio(touches[i].clientX);
+      const posY = scaleByPixelRatio(touches[i].clientY);
+      updatePointerMoveData(pointer, posX, posY, pointer.color);
+    }
+    startLoopIfNeeded();
+  });
 
-  window.addEventListener("touchend", () => {
+  bindGlobalOnce("fluid-touchend", window, "touchend", () => {
     const pointer = pointers[0];
     updatePointerUpData(pointer);
   });
@@ -1977,11 +2110,13 @@ function initMemorialBoard() {
     if (currentTypewriterTimeout) {
       clearTimeout(currentTypewriterTimeout);
     }
-    element.innerHTML = "";
+    let typed = "";
+    element.textContent = "";
     let i = 0;
     function type() {
       if (i < text.length) {
-        element.innerHTML += text.charAt(i);
+        typed += text.charAt(i);
+        element.textContent = typed;
         i++;
         currentTypewriterTimeout = setTimeout(type, speed);
       } else {
@@ -1991,46 +2126,41 @@ function initMemorialBoard() {
     type();
   }
 
-  chipBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.getAttribute("data-archive");
-      if (!key) return;
-      const data = (
-        archiveData as Record<
-          string,
-          (typeof archiveData)[keyof typeof archiveData]
-        >
-      )[key];
-      if (!data) return;
+  bindTabGroup(chipBtns, (btn) => {
+    const key = btn.getAttribute("data-archive");
+    if (!key) return;
+    const data = (
+      archiveData as Record<
+        string,
+        (typeof archiveData)[keyof typeof archiveData]
+      >
+    )[key];
+    if (!data) return;
 
-      // Update active state
-      setActiveButton(chipBtns, btn);
+    // Audio feedback
+    playQuantumBeep(data.freq, "sine", 0.25, 0.12);
+    // Spark/chime chord effect
+    setTimeout(() => {
+      playQuantumBeep(data.freq * 1.5, "triangle", 0.15, 0.05);
+    }, 80);
 
-      // Audio feedback
-      playQuantumBeep(data.freq, "sine", 0.25, 0.12);
-      // Spark/chime chord effect
+    // Retrieval status indicator
+    if (indicatorEl) {
+      indicatorEl.textContent = "RETRIEVING...";
+      indicatorEl.style.color = "var(--primary)";
       setTimeout(() => {
-        playQuantumBeep(data.freq * 1.5, "triangle", 0.15, 0.05);
-      }, 80);
+        indicatorEl.textContent = "ACTIVE_LOADED";
+        indicatorEl.style.color = "var(--secondary)";
+      }, 300);
+    }
 
-      // Retrieval status indicator
-      if (indicatorEl) {
-        indicatorEl.textContent = "RETRIEVING...";
-        indicatorEl.style.color = "var(--primary)";
-        setTimeout(() => {
-          indicatorEl.textContent = "ACTIVE_LOADED";
-          indicatorEl.style.color = "var(--secondary)";
-        }, 300);
-      }
-
-      // Update Text Content with animations
-      if (asciiEl) asciiEl.textContent = data.ascii;
-      if (titleEl) titleEl.textContent = data.title;
-      if (dateEl) dateEl.textContent = data.date;
-      if (descEl) typeWriterText(data.desc, descEl, 8);
-      if (statVal1El) statVal1El.textContent = data.stat1;
-      if (statVal2El) statVal2El.textContent = data.stat2;
-    });
+    // Update Text Content with animations
+    if (asciiEl) asciiEl.textContent = data.ascii;
+    if (titleEl) titleEl.textContent = data.title;
+    if (dateEl) dateEl.textContent = data.date;
+    if (descEl) typeWriterText(data.desc, descEl, 8);
+    if (statVal1El) statVal1El.textContent = data.stat1;
+    if (statVal2El) statVal2El.textContent = data.stat2;
   });
 
   // Pay Respects Virtual Burning system
@@ -2108,23 +2238,10 @@ function initMemorialBoard() {
     });
   }
 
-  // Keyboard shortcut: Press "F" or "f" to pay respects
-  const mbKeydownHandler = (e: KeyboardEvent) => {
-    if (e.key === "f" || e.key === "F") {
-      // Ignore if user is inside form inputs
-      if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA"
-      ) {
-        return;
-      }
-      performRespectBurn();
-    }
-  };
-  window.addEventListener("keydown", mbKeydownHandler);
-  registerCleanup(() =>
-    window.removeEventListener("keydown", mbKeydownHandler),
-  );
+  // Keyboard shortcut: Press "F" or "f" to pay respects (shared registry —
+  // see onFKeyPress — so this doesn't double-fire alongside the analytics
+  // chart's own "F" shortcut when both are on the same page)
+  onFKeyPress(performRespectBurn);
 
   // --- Dynamic Canvas Burn Ashes Engine ---
   const ashesCanvasEl = document.getElementById(
@@ -2215,8 +2332,9 @@ function initMemorialBoard() {
   }
 
   let ashesStopped = false;
+  let ashesVisible = true;
   function animateAshes() {
-    if (ashesStopped) return;
+    if (ashesStopped || !ashesVisible) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // Draw subtle glowing vapor background at bottom
     const grad = ctx.createLinearGradient(0, canvas.height, 0, 0);
@@ -2234,6 +2352,11 @@ function initMemorialBoard() {
   }
 
   animateAshes();
+  // Stop redrawing while the memorial board is scrolled off-screen.
+  pauseWhenOffscreen(canvas, (visible) => {
+    ashesVisible = visible;
+    if (visible) animateAshes();
+  });
   registerCleanup(() => {
     ashesStopped = true;
   });
@@ -2836,7 +2959,9 @@ function initQuantumScrollEngine() {
   hudContainer.className = "cyber-hud-nav font-mono";
   hudContainer.innerHTML = `
     <button class="hud-drawer-tab" id="hud-drawer-tab" type="button" title="Open/close INDEX panel">
-      <span class="hud-toggle-arrow">▸</span>
+      <svg class="hud-toggle-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"></polyline>
+      </svg>
     </button>
     <div class="hud-drawer-content">
       <div class="hud-section-header">
@@ -2848,7 +2973,7 @@ function initQuantumScrollEngine() {
       </div>
       <div class="hud-settings-panel" id="hud-settings-panel">
         <button class="hud-settings-row" id="hud-beat-toggle" type="button">
-          <span class="beat-label">▶ CYBER BEAT</span>
+          <span class="beat-label">▶ BEAT: OFF</span>
           <span class="beat-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
         </button>
         <button class="hud-settings-row" id="respects-sound-toggle" type="button">🔊 SFX ON</button>
@@ -3034,13 +3159,8 @@ function initQuantumScrollEngine() {
     }
   });
 
-  // Attach window scroll listeners
-  bindGlobalOnce(
-    "quantum-scroll-progress",
-    window,
-    "scroll",
-    updateScrollProgress,
-  );
+  // Attach window scroll listener (shared, rAF-throttled — see onWindowScroll)
+  onWindowScroll(updateScrollProgress);
 
   // Initial trigger
   updateScrollProgress();
@@ -3264,7 +3384,7 @@ function initSynthPlayer() {
   // visually turn the beat back on even after the user had paused it.
   if (beatDisabledByUser) {
     synthPlayBtn.classList.remove("playing");
-    setBeatLabel("▶ CYBER BEAT");
+    setBeatLabel("▶ BEAT: OFF");
   } else {
     synthPlayBtn.classList.add("playing");
     setBeatLabel("■ BEAT: ON");
@@ -3286,7 +3406,7 @@ function initSynthPlayer() {
         if (arpInterval) clearInterval(arpInterval);
       }, 200);
 
-      setBeatLabel("▶ CYBER BEAT");
+      setBeatLabel("▶ BEAT: OFF");
       synthPlayBtn.classList.remove("playing");
     } else {
       // Play / Boot Synthesizer
@@ -3493,7 +3613,15 @@ function startSequencerLoop() {
 const PREMIUM_CARD_SELECTOR =
   ".altar-card, .viewer-screen, .social-card, .stat-card, .terminal-container, .tax-dashboard-container";
 
-// 3. 3D Parallax Tilt Effects and Cursor Spotlight Border Glows
+// 3. Cursor Spotlight Border Glow (one-time DOM setup)
+// The actual per-frame mousemove work for these cards — 3D tilt, the
+// spotlight border's --mouse-x/--mouse-y position, AND the solar shadow
+// from FEATURE 10 — used to live in two separate global `mousemove`
+// listeners, each doing its own querySelectorAll + getBoundingClientRect
+// pass over the same cards. They're now merged into one listener inside
+// initDynamicHUDAndShadows() so every card is queried and measured only
+// once per mouse move instead of twice. This function just injects the
+// static .spotlight-border overlay div once per card.
 function initLuxuryEffects() {
   // NOTE: .legend-card is intentionally excluded — it already has its own
   // dedicated hover/pin highlight system tied to the tax ring (see
@@ -3505,42 +3633,11 @@ function initLuxuryEffects() {
   );
 
   targetEls.forEach((el) => {
-    // Dynamically inject spotlight overlays if they aren't written in HTML
-    if (!el.querySelector(".spotlight-glow")) {
-      const glow = document.createElement("div");
-      glow.className = "spotlight-glow";
-      // Insert glow as first child so it sits as a background element
-      el.insertBefore(glow, el.firstChild);
-    }
     if (!el.querySelector(".spotlight-border")) {
       const border = document.createElement("div");
       border.className = "spotlight-border";
       el.appendChild(border);
     }
-
-    el.addEventListener("mousemove", (e) => {
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      el.style.setProperty("--mouse-x", `${x}px`);
-      el.style.setProperty("--mouse-y", `${y}px`);
-
-      // 3D Card Tilt coordinate scaling (max 6 degrees tilt)
-      const width = rect.width;
-      const height = rect.height;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const rotateX = ((y - centerY) / centerY) * -3;
-      const rotateY = ((x - centerX) / centerX) * 3;
-
-      el.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.015, 1.015, 1.015)`;
-    });
-
-    el.addEventListener("mouseleave", () => {
-      el.style.transform =
-        "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
-    });
   });
 }
 
@@ -3634,8 +3731,9 @@ function initCosmicStardust() {
     }
 
     let stardustStopped = false;
+    let isVisible = true;
     const animate = () => {
-      if (stardustStopped) return;
+      if (stardustStopped || !isVisible) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       stars.forEach((s) => {
         s.update();
@@ -3644,6 +3742,12 @@ function initCosmicStardust() {
       requestAnimationFrame(animate);
     };
     animate();
+    // Stop redrawing while scrolled off-screen; resume right where the
+    // loop left off once the section is back in view.
+    pauseWhenOffscreen(container, (visible) => {
+      isVisible = visible;
+      if (visible) animate();
+    });
     registerCleanup(() => {
       stardustStopped = true;
     });
@@ -3773,10 +3877,14 @@ function initSpatialUISound() {
 
   attachSounds();
 
-  // Re-run periodically to cover dynamically spawned tables or items
-  if (!boundGlobalListeners.has("spatial-ui-sound-poll")) {
-    boundGlobalListeners.add("spatial-ui-sound-poll");
-    setInterval(attachSounds, 2000);
+  // Re-run whenever new interactive elements are actually added to the page
+  // (dynamically spawned tables/items), instead of polling the whole DOM
+  // every 2 seconds forever regardless of whether anything changed.
+  if (!boundGlobalListeners.has("spatial-ui-sound-observer")) {
+    boundGlobalListeners.add("spatial-ui-sound-observer");
+    const observer = new MutationObserver(() => attachSounds());
+    observer.observe(document.body, { childList: true, subtree: true });
+    registerCleanup(() => observer.disconnect());
   }
 }
 
@@ -3784,6 +3892,11 @@ function initSpatialUISound() {
    FEATURE 9: QUANTUM TARGET CURSOR RETICLE & SPARKLE TRAILS
    ============================================================================ */
 function initQuantumCursor() {
+  // CSS already hides #quantum-cursor with display:none below 768px and it
+  // has nothing to track without a real pointer — so don't even start the
+  // per-frame rAF position loop below on those devices, and skip it for
+  // reduced-motion users too.
+  if (isCoarsePointerDevice() || prefersReducedMotion()) return;
   if (boundGlobalListeners.has("quantum-cursor-init")) return;
   boundGlobalListeners.add("quantum-cursor-init");
 
@@ -3793,22 +3906,29 @@ function initQuantumCursor() {
   let mouseX = 0;
   let mouseY = 0;
 
-  // Track position
+  // Track mouse position
   window.addEventListener("mousemove", (e) => {
     mouseX = e.clientX;
     mouseY = e.clientY;
 
     cursor.classList.add("active");
 
-    // Spawn tiny space stardust sparkles on drift
+    // 40% chance to spawn a stardust sparkle on drift
     if (Math.random() > 0.6) {
       spawnCursorSparkle(mouseX, mouseY);
     }
   });
 
-  // Position tracking: follow the mouse coordinates instantly for 100% pixel-perfect click accuracy
+  // Redraw the reticle instantly, but only when visible and moved
+  // (skips redundant style writes on unchanged/off-screen frames).
+  let lastDrawnX = -1;
+  let lastDrawnY = -1;
   const updateCursorPosition = () => {
-    cursor.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
+    if (!document.hidden && (mouseX !== lastDrawnX || mouseY !== lastDrawnY)) {
+      cursor.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
+      lastDrawnX = mouseX;
+      lastDrawnY = mouseY;
+    }
     requestAnimationFrame(updateCursorPosition);
   };
   updateCursorPosition();
@@ -3827,11 +3947,17 @@ function initQuantumCursor() {
     cursor.classList.remove("active");
   });
 
+  // Live sparkles, capped so a fast mouse swipe can't pile up unlimited
+  // DOM nodes before their 600ms auto-remove fires (same idea as
+  // MAX_PARTICLES for click-particles above).
+  const activeSparkles: HTMLElement[] = [];
+  const MAX_SPARKLES = 20;
+
   function spawnCursorSparkle(x: number, y: number) {
     const sparkle = document.createElement("div");
     sparkle.className = "quantum-sparkle";
 
-    // Randomize colors (cyan or pink matches AIDoge)
+    // Cyan or pink, matches AIDoge palette
     const isPink = Math.random() > 0.5;
     sparkle.style.color = isPink ? "#ff2a5f" : "#00f0ff";
     sparkle.style.backgroundColor = isPink
@@ -3844,14 +3970,23 @@ function initQuantumCursor() {
     sparkle.style.left = `${x}px`;
     sparkle.style.top = `${y}px`;
 
-    // Drift direction
+    // Drift direction, floats slightly downward
     const dx = (Math.random() - 0.5) * 45;
-    const dy = (Math.random() - 0.5) * 45 + 15; // float downwards slightly
+    const dy = (Math.random() - 0.5) * 45 + 15;
     sparkle.style.setProperty("--dx", `${dx}px`);
     sparkle.style.setProperty("--dy", `${dy}px`);
 
     document.body.appendChild(sparkle);
-    setTimeout(() => sparkle.remove(), 600);
+    activeSparkles.push(sparkle);
+    if (activeSparkles.length > MAX_SPARKLES) {
+      activeSparkles.shift()?.remove();
+    }
+
+    setTimeout(() => {
+      sparkle.remove();
+      const idx = activeSparkles.indexOf(sparkle);
+      if (idx !== -1) activeSparkles.splice(idx, 1);
+    }, 600);
   }
 
   function spawnClickRipple(x: number, y: number) {
@@ -3942,22 +4077,10 @@ function initLuminousAnalytics() {
     });
   }
 
-  // Handle keyboard shortcut F key respects click
-  const laKeydownHandler = (e: KeyboardEvent) => {
-    if (e.key === "f" || e.key === "F") {
-      // Check if inputs are focused to prevent annoying shortcuts
-      if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA"
-      )
-        return;
-      triggerChartBurnSpike();
-    }
-  };
-  window.addEventListener("keydown", laKeydownHandler);
-  registerCleanup(() =>
-    window.removeEventListener("keydown", laKeydownHandler),
-  );
+  // Handle keyboard shortcut F key respects click (shared registry — see
+  // onFKeyPress — so this doesn't double-fire alongside the memorial
+  // board's own "F" shortcut when both are on the same page)
+  onFKeyPress(triggerChartBurnSpike);
 
   function triggerChartBurnSpike() {
     // Generate explosive buy pressure surge
@@ -3985,8 +4108,9 @@ function initLuminousAnalytics() {
 
   // Main drawing loop
   let chartStopped = false;
+  let chartVisible = true;
   const drawChart = () => {
-    if (chartStopped || !canvas || !ctx) return;
+    if (chartStopped || !chartVisible || !canvas || !ctx) return;
 
     // Handle resizes smoothly
     const parentEl = canvas.parentNode as HTMLElement | null;
@@ -4189,6 +4313,11 @@ function initLuminousAnalytics() {
   };
 
   drawChart();
+  // Stop redrawing while the chart is scrolled off-screen.
+  pauseWhenOffscreen(canvas, (visible) => {
+    chartVisible = visible;
+    if (visible) drawChart();
+  });
   registerCleanup(() => {
     chartStopped = true;
   });
@@ -4247,10 +4376,14 @@ function initHolographicTimeline() {
       const fullText = descEl.getAttribute("data-text") || descEl.textContent;
       descEl.textContent = "";
 
+      // Build the string in JS and assign via textContent (no HTML re-parse
+      // per char, and no innerHTML injection of arbitrary text).
+      let typed = "";
       let i = 0;
       const type = () => {
         if (i < fullText.length) {
-          descEl.innerHTML += fullText.charAt(i);
+          typed += fullText.charAt(i);
+          descEl.textContent = typed;
           i++;
           setTimeout(type, 12); // fast futuristic typing
         }
@@ -4285,7 +4418,7 @@ function initHolographicTimeline() {
 }
 
 /* ============================================================================
-   FEATURE 10: SOLAR SHADOWS & FEATURE 11: HUD RADAR NAVIGATION
+   FEATURES 3 + 10 + 11: CARD TILT/SPOTLIGHT, SOLAR SHADOWS & HUD RADAR NAV
    ============================================================================ */
 function initDynamicHUDAndShadows() {
   const radarCoord = document.getElementById("radar-coord-val");
@@ -4300,9 +4433,15 @@ function initDynamicHUDAndShadows() {
   // "The AudioContext was not allowed to start... after a user gesture" warning).
   let hasInitializedSector = false;
 
-  bindGlobalOnce("hud-shadow-mousemove", window, "mousemove", (e) => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
+  // Heavy work (querySelectorAll + getBoundingClientRect per card + style
+  // writes) is throttled to once per animation frame via this flag, instead
+  // of running in full on every mousemove — mousemove can fire far more
+  // often than the screen repaints, so anything past the first event in a
+  // frame would just be wasted work overwriting itself before it's shown.
+  let hudFrameQueued = false;
+
+  function updateHudFrame() {
+    hudFrameQueued = false;
 
     // --- FEATURE 11: UPDATE RADAR COORDINATES FROM MOUSE ---
     if (radarCoord) {
@@ -4312,11 +4451,14 @@ function initDynamicHUDAndShadows() {
       radarCoord.textContent = `X:${pctX.toString().padStart(3, "0")} Y:${pctY.toString().padStart(3, "0")}`;
     }
 
-    // --- FEATURE 10: DYNAMIC SOLAR SHADOW MAPPING ---
+    // --- FEATURES 3 + 10: MERGED CARD TILT / SPOTLIGHT BORDER / SOLAR SHADOW ---
     // Re-query every time instead of caching once when initApp() runs,
     // because these cards (.social-card, .terminal-container, ...) get
     // destroyed/recreated on page change.
-    // .legend-card excluded here too, same reason as initLuxuryEffects above.
+    // .legend-card excluded here too, same reason noted in initLuxuryEffects.
+    // Single querySelectorAll + single getBoundingClientRect per card,
+    // shared by all three card effects below (previously two separate
+    // mousemove listeners each re-querying and re-measuring these cards).
     const cards = document.querySelectorAll<HTMLElement>(
       `${PREMIUM_CARD_SELECTOR}, .node-card`,
     );
@@ -4325,15 +4467,12 @@ function initDynamicHUDAndShadows() {
       const cardCX = rect.left + rect.width / 2;
       const cardCY = rect.top + rect.height / 2;
 
-      // Delta vector from cursor to card center
+      // --- Solar shadow: delta vector from cursor to card center ---
       const dx = cardCX - mouseX;
       const dy = cardCY - mouseY;
-
-      // Compute distance and angle
       const dist = Math.sqrt(dx * dx + dy * dy);
       const maxDist = 700;
       const scaleOffset = Math.min(dist / maxDist, 1.0) * 10; // Max 10px offset shadows
-
       const angle = Math.atan2(dy, dx);
       const sx = Math.cos(angle) * scaleOffset;
       const sy = Math.sin(angle) * scaleOffset;
@@ -4347,10 +4486,44 @@ function initDynamicHUDAndShadows() {
       ) {
         glowColor = "rgba(255, 42, 95, 0.18)"; // Pink
       }
-
-      // Dynamic shadow update on element
       card.style.boxShadow = `${sx}px ${sy}px 25px ${glowColor}, inset 0 0 15px rgba(255, 255, 255, 0.03)`;
+
+      // --- 3D tilt + spotlight border only apply to showcase cards, not
+      // .node-card, matching the original initLuxuryEffects scope ---
+      if (!card.matches(PREMIUM_CARD_SELECTOR)) return;
+
+      const localX = mouseX - rect.left;
+      const localY = mouseY - rect.top;
+      const isHovering =
+        localX >= 0 &&
+        localX <= rect.width &&
+        localY >= 0 &&
+        localY <= rect.height;
+
+      if (isHovering) {
+        card.style.setProperty("--mouse-x", `${localX}px`);
+        card.style.setProperty("--mouse-y", `${localY}px`);
+
+        // 3D Card Tilt coordinate scaling (max 6 degrees tilt)
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const rotateX = ((localY - centerY) / centerY) * -3;
+        const rotateY = ((localX - centerX) / centerX) * 3;
+        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.015, 1.015, 1.015)`;
+      } else {
+        card.style.transform =
+          "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+      }
     });
+  }
+
+  bindGlobalOnce("hud-shadow-mousemove", window, "mousemove", (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (!hudFrameQueued) {
+      hudFrameQueued = true;
+      requestAnimationFrame(updateHudFrame);
+    }
   });
 
   // --- FEATURE 11: HUD RADAR ACTIVE SECTOR TRACKING ---
@@ -4400,10 +4573,8 @@ function initDynamicHUDAndShadows() {
     }
   };
 
-  // Run on scroll and resize
-  bindGlobalOnce("hud-radar-scroll", window, "scroll", () => {
-    updateRadarActiveSector();
-  });
+  // Run on scroll (shared, rAF-throttled — see onWindowScroll) and resize
+  onWindowScroll(updateRadarActiveSector);
   bindGlobalOnce("hud-radar-resize", window, "resize", updateRadarActiveSector);
 
   // Initial run (no sound played — see the hasInitializedSector flag above)
