@@ -4360,15 +4360,17 @@ function initHolographicTimeline() {
 
   function triggerCardDecryption(node: Element) {
     const descEl = node.querySelector(".node-desc");
-    const titleEl = node.querySelector(".node-title");
-    const headerEl = node.querySelector(".node-glitch-header");
+    const titleEl = node.querySelector<HTMLElement>(".node-title");
+    const headerEl = node.querySelector<HTMLElement>(".node-glitch-header");
 
-    // 1. Digital glitch text scramble on headers
+    // 1. Digital glitch text scramble on headers — reuses the same
+    // TextScrambler class as the memorial board's archive title decrypt
+    // (see FEATURE 2), instead of a second hand-rolled scramble loop.
     if (titleEl) {
-      scrambleText(titleEl.textContent, titleEl, 12);
+      new TextScrambler(titleEl).setText(titleEl.textContent || "");
     }
     if (headerEl) {
-      scrambleText(headerEl.textContent, headerEl, 8);
+      new TextScrambler(headerEl).setText(headerEl.textContent || "");
     }
 
     // 2. Real-time dynamic typewriter typing
@@ -4391,29 +4393,6 @@ function initHolographicTimeline() {
       // Short offset for aesthetics
       setTimeout(type, 200);
     }
-  }
-
-  // Glitch characters list
-  const glyphs = "01_X_#_[_]_/_*_&_@_%_$_?_!";
-  function scrambleText(originalText: string, element: Element, steps = 10) {
-    let iteration = 0;
-    const interval = setInterval(() => {
-      element.textContent = originalText
-        .split("")
-        .map((char, index) => {
-          if (index < iteration) {
-            return originalText[index];
-          }
-          return glyphs[Math.floor(Math.random() * glyphs.length)];
-        })
-        .join("");
-
-      if (iteration >= originalText.length) {
-        clearInterval(interval);
-        element.textContent = originalText; // restore exact
-      }
-      iteration += originalText.length / steps;
-    }, 40);
   }
 }
 

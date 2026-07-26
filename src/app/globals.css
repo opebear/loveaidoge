@@ -1665,6 +1665,17 @@ body {
   min-height: 72px;
 }
 
+/* Shared plain-text reset (was repeated in each class below) */
+.archive-desc,
+.altar-tagline,
+.tax-subheading,
+.telemetry-desc,
+.node-desc {
+  text-transform: none !important;
+  text-shadow: none !important;
+  animation: none !important;
+}
+
 .archive-desc {
   font-size: 13px !important;
   line-height: 1.7;
@@ -1674,10 +1685,7 @@ body {
   font-family:
     var(--font-fira-code), "JetBrains Mono", ui-monospace, SFMono-Regular,
     monospace !important;
-  text-transform: none !important;
   letter-spacing: 0.2px !important;
-  text-shadow: none !important;
-  animation: none !important;
 }
 
 .archive-stats {
@@ -1826,10 +1834,7 @@ body {
   text-align: center !important;
   margin: 0 !important;
   font-family: var(--font-body) !important;
-  text-transform: none !important;
   letter-spacing: 0 !important;
-  text-shadow: none !important;
-  animation: none !important;
 }
 
 .glow-warning-text {
@@ -2143,10 +2148,7 @@ body {
   color: #a1a1aa !important;
   margin: 0 !important;
   font-family: var(--font-body) !important;
-  text-transform: none !important;
   letter-spacing: 0.2px !important;
-  text-shadow: none !important;
-  animation: none !important;
 }
 
 .tax-grid {
@@ -2479,10 +2481,7 @@ body {
   text-align: left !important;
   margin: 0 !important;
   font-family: var(--font-fira-code), monospace !important;
-  text-transform: none !important;
   letter-spacing: 0.1px !important;
-  text-shadow: none !important;
-  animation: none !important;
 }
 
 .telemetry-parameters {
@@ -3806,12 +3805,9 @@ body {
   color: #a1a1aa !important;
   line-height: 1.5 !important;
   text-align: left !important;
-  text-transform: none !important;
   letter-spacing: normal !important;
   margin-top: 6px !important;
   margin-bottom: 8px !important;
-  text-shadow: none !important;
-  animation: none !important;
   display: block !important;
 }
 .node-meta {
